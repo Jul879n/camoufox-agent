@@ -12,6 +12,8 @@ import { handleExtract } from "./extract-tool.js";
 import { flowListToolShape, flowRunToolShape, flowSaveToolShape, type FlowDefinition } from "./schema/tools.js";
 import { flowListOutputSchema, flowRunOutputSchema, flowSaveOutputSchema } from "./schema/output.js";
 import { handleFlowList, handleFlowRun, handleFlowSave } from "./flow-tools.js";
+import { diagnoseToolShape, inspectToolShape, sessionTraceToolShape, type DiagnoseToolInput, type InspectToolInput, type SessionTraceToolInput } from "./schema/tools.js";
+import { handleDiagnose, handleInspect, handleSessionTrace } from "./diagnose-tool.js";
 import { handleProfileDelete, handleProfilesList } from "./profile-tools.js";
 import { handleBrowse, handleConsole, handleFind, handleForms, handleLinks, handleNetworkSummary, handleOutline, handleScreenshot, handleSequence, handleSnapshot, handleStatus } from "./tool-handlers.js";
 import { handleSessionAction, handleSessionClose, handleSessionNavigate, handleSessionResume, handleSessionSnapshot, handleSessionStart } from "./sessions.js";
@@ -73,6 +75,9 @@ function registerAll(): void {
   registerJsonTool("flow_list", "List saved flows (scripted login/automation) with their schedule and last run.", flowListToolShape, { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }, async () => handleFlowList(), flowListOutputSchema);
   registerJsonTool("flow_save", "Create or overwrite a saved flow: optional profile, startUrl, bounded actions, optional extract and cron schedule.", flowSaveToolShape, { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false }, async (input) => handleFlowSave(input as { name: string; flow: FlowDefinition }), flowSaveOutputSchema);
   registerJsonTool("flow_run", "Run a saved flow now and return its result (also stored under runs/).", flowRunToolShape, nonReadOnlyOpenWorld, async (input) => handleFlowRun(input), flowRunOutputSchema);
+  registerJsonTool("browse_diagnose", "Developer diagnostics for a page or session: console and uncaught errors with stacks, network timings/sizes/failures/caching, Web Vitals and navigation timing, DOM stats, and an audit (SEO, accessibility, security headers, cookies, mixed content). Supports emulation (color scheme, timezone, geolocation, offline). Firefox has no Lighthouse/CDP profiling.", diagnoseToolShape, nonReadOnlyOpenWorld, async (input) => handleDiagnose(input as DiagnoseToolInput));
+  registerJsonTool("browse_inspect", "Inspect one element like DevTools: box model, computed styles, matched CSS rules, attributes, visibility, overflow, accessibility tree.", inspectToolShape, readOnlyOpenWorld, async (input) => handleInspect(input as InspectToolInput));
+  registerJsonTool("browse_session_trace", "Start or stop a Playwright trace (screenshots, DOM snapshots, network) for a session and save it as a .zip under exports/.", sessionTraceToolShape, nonReadOnlyOpenWorld, async (input) => handleSessionTrace(input as SessionTraceToolInput));
   registerJsonTool("browse_profiles_list", "List named persistent browser profiles.", profilesListToolShape, { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }, async () => handleProfilesList(), profilesListOutputSchema);
   registerJsonTool("browse_profile_delete", "Delete a named browser profile and its saved logins.", profileDeleteToolShape, { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false }, async (input) => handleProfileDelete(input), profileDeleteOutputSchema);
 }

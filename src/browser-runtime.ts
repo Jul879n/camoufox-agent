@@ -212,6 +212,7 @@ export async function runBrowserOperation<T>(
     try {
       const context = await browser.newContext(browserContextOptions(effectiveInput));
       const requestGuard = await installRequestGuard(context);
+      await effectiveInput.setup?.(context);
       const page = await context.newPage();
       requestGuard.watchPage(page);
 

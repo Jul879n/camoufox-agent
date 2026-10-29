@@ -135,9 +135,16 @@ export function buildCamoufoxOptions(input: BrowserLaunchInput, selectedOS: Supp
   };
 }
 
-export function browserContextOptions(input: BrowserLaunchInput, storageState?: string): Parameters<Browser["newContext"]>[0] {
+export function browserContextOptions(input: BrowserLaunchInput, storageState?: string, recordHarPath?: string): Parameters<Browser["newContext"]>[0] {
+  const emulation = input.emulation;
   return {
     serviceWorkers: "block",
+    ...(emulation?.colorScheme ? { colorScheme: emulation.colorScheme } : {}),
+    ...(emulation?.reducedMotion ? { reducedMotion: emulation.reducedMotion } : {}),
+    ...(emulation?.timezoneId ? { timezoneId: emulation.timezoneId } : {}),
+    ...(emulation?.geolocation ? { geolocation: emulation.geolocation, permissions: ["geolocation"] } : {}),
+    ...(emulation?.offline ? { offline: true } : {}),
+    ...(recordHarPath ? { recordHar: { path: recordHarPath } } : {}),
     ...(storageState ? { storageState } : {}),
     viewport: input.viewport ? {
       width: input.viewport.width,

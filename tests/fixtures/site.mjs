@@ -43,6 +43,9 @@ export function startFixtureSite(port = 0) {
         }).join("");
         return send(200, page(`${items}<ul>${n < 10 ? `<li class="next"><a href="/quotes/page/${n + 1}">Next</a></li>` : ""}</ul>`));
       }
+      if (url.pathname === "/broken") {
+        return send(200, `<!doctype html><html><head><title>Roto</title><style>.box{width:120px;padding:8px;border:2px solid red;color:blue}</style></head><body><h1>A</h1><h1>B</h1><img src="/missing.png"><div class="box" id="box">hola</div><a href="/x" target="_blank"></a><script>console.error("boom");console.warn("cuidado");setTimeout(()=>{throw new Error("fallo async")},50)</script></body></html>`);
+      }
       send(404, page("not found"));
     });
   });

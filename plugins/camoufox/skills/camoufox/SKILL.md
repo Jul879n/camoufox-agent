@@ -39,6 +39,7 @@ On a fresh machine, install the Camoufox binary once. From a repository checkout
 - **Navigation inside a sequence/session**: action `goto { url }`.
 - **Structured extraction**: `browse_extract { url | sessionId, itemSelector, fields, nextSelector?, maxPages?, saveAs? }` returns rows and can save `exports/<name>.json|csv`.
 - **Flows**: `flow_save`, `flow_list`, `flow_run` (login script + optional extract + cron `schedule`), also `camoufox-agent run <flow>`.
+- **Diagnostics**: `browse_diagnose { url | sessionId }` (console + uncaught errors, network, Web Vitals, SEO/a11y/security audit), `browse_inspect { selector }` (box model, computed styles, matched rules), `emulation` option, `recordHar` on session start and `browse_session_trace`. Firefox only: no Lighthouse/CDP profiling.
 - **Human in the loop** (sessions only): `waitForHuman { reason, until? }` and `promptCode { selector, label }`. Without `camoufox-agent serve` they return `status: "paused"`: ask the user, then continue with `fill` / `browse_session_resume`. With `serve`, the user acts from `http://127.0.0.1:9420/live`.
 
 ## Bring the Server Up (operator / local checkout)

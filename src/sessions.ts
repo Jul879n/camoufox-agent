@@ -1,4 +1,8 @@
 import { randomUUID } from "node:crypto";
+import path from "node:path";
+import { attachCollector } from "./diagnose/collector.js";
+import { filesRoot } from "./files.js";
+import { ensureDir } from "./home.js";
 import type { Browser, Response } from "playwright-core";
 import chalk from "chalk";
 import { normalizeHostname, validateTargetUrl } from "./policy.js";
@@ -83,6 +87,7 @@ export async function closeSessionNow(session: SessionRecord, reason: string): P
         console.error(chalk.red(`[Camoufox] Failed to save profile ${session.profile}: ${describeError(saveError)}`));
       }
     }
+    if (session.harPath) await session.context.close().catch(() => undefined);
     await closeBrowser(session.browser);
   } finally {
     if (session.profile) releaseProfileLock(session.profile);
@@ -262,7 +267,8 @@ export async function handleSessionStart(input: SessionStartToolInput) {
 
     browser = await launchCamoufoxBrowser({ ...buildCamoufoxOptions(launchInput, selectedOS, headlessMode), ...(fingerprint ? { fingerprint, i_know_what_im_doing: true } : {}) });
     trackBrowser(browser);
-    const context = await browser.newContext(browserContextOptions(launchInput, stored?.statePath));
+    const harPath = input.recordHar ? path.join(ensureDir(path.join(filesRoot(), "exports")), input.recordHar) : undefined;
+    const context = await browser.newContext(browserContextOptions(launchInput, stored?.statePath, harPath));
     const requestGuard = await installRequestGuard(context);
     const page = await context.newPage();
     requestGuard.watchPage(page);
@@ -286,6 +292,7 @@ export async function handleSessionStart(input: SessionStartToolInput) {
       secrets,
       createdAt: now,
       profile: input.profile,
+      harPath,
       lastProfileSaveAt: Date.now(),
       expiresAt: null,
       lastNavigationResponse: null,
@@ -298,6 +305,7 @@ export async function handleSessionStart(input: SessionStartToolInput) {
       session.lastNavigationResponse = response;
     });
 
+    session.rich = await attachCollector(context, () => ({ rawUrls: session.rawUrls, secrets: session.secrets }));
     scheduleExpiry(session);
     sessions.set(id, session);
     browser = undefined;

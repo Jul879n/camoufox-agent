@@ -1,4 +1,5 @@
 import type { Browser, BrowserContext, Page, Response } from "playwright-core";
+import type { RichCollector } from "./diagnose/collector.js";
 import type { CaptchaPolicy, DiagnosticsPayload, ScreenshotMetadata } from "./payload-types.js";
 
 export type BrowserInstance = Browser;
@@ -37,6 +38,9 @@ export interface SessionRecord {
   rawUrls: string[];
   secrets: string[];
   createdAt: number;
+  rich?: RichCollector;
+  harPath?: string;
+  tracing?: boolean;
   profile?: string;
   lastProfileSaveAt?: number;
   expiresAt: number | null;
@@ -92,6 +96,15 @@ export interface BrowserLaunchInput {
   includeNetwork?: boolean;
   stealthProfile?: StealthProfile;
   captchaPolicy?: CaptchaPolicy;
+  emulation?: {
+    colorScheme?: "light" | "dark" | "no-preference";
+    reducedMotion?: "reduce" | "no-preference";
+    timezoneId?: string;
+    geolocation?: { latitude: number; longitude: number };
+    offline?: boolean;
+  };
+  // Internal: runs on the fresh context before any page exists (used by diagnostics).
+  setup?: (context: BrowserContext) => Promise<void> | void;
 }
 
 export interface ExtractedContent {

@@ -56,6 +56,12 @@ camoufox-agent fetch
 - **Flujos**: `flow_save`, `flow_list`, `flow_run`; login por script, extracción y `schedule` (cron de 5 campos).
 - **Humano en el loop**: acciones `waitForHuman` y `promptCode`; con `serve`, el usuario interviene desde `/live`.
 - Acción `goto` dentro de secuencias y sesiones.
+- **Diagnóstico para desarrollo**:
+  - `browse_diagnose` (`url` o `sessionId`): consola y errores no capturados con stack, red (tiempos, tamaños, fallos, caché, compresión), Web Vitals y navigation timing, estadísticas del DOM y una auditoría (SEO, accesibilidad, cabeceras de seguridad, cookies, contenido mixto). `saveAs` guarda el informe en `exports/`.
+  - `browse_inspect`: caja, estilos computados, reglas CSS aplicadas, visibilidad, desbordamiento y árbol de accesibilidad de un selector.
+  - `emulation` en cualquier tool: `colorScheme`, `reducedMotion`, `timezoneId`, `geolocation`, `offline`.
+  - `browse_session_start { recordHar }` (HAR al cerrar) y `browse_session_trace` (trace de Playwright en `.zip`).
+  - Límite: Camoufox es Firefox, sin CDP. No hay Lighthouse, performance traces de Chrome, heap snapshots ni cobertura; en Firefox faltan además CLS y long tasks (el informe los lista como no soportados).
 
 Datos en `CAMOUFOX_AGENT_HOME` (por defecto `~/.camoufox-agent`): `profiles/`, `flows/`, `runs/`, `files/`, `secrets.json`.
 

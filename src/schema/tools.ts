@@ -12,7 +12,16 @@ import type { WindowSize } from "../types.js";
 import { PROFILE_NAME } from "../profiles.js";
 import { captchaPolicySchema, screenshotOptionsSchema, stealthProfileSchema, viewportSchema, windowSchema, proxySchema } from "./primitives.js";
 
+export const emulationSchema = z.object({
+  colorScheme: z.enum(["light", "dark", "no-preference"]).optional(),
+  reducedMotion: z.enum(["reduce", "no-preference"]).optional(),
+  timezoneId: z.string().max(100).optional().describe("IANA timezone, e.g. America/Santiago."),
+  geolocation: z.object({ latitude: z.number().min(-90).max(90), longitude: z.number().min(-180).max(180) }).optional(),
+  offline: z.boolean().optional().describe("Start with the network off (test offline behaviour)."),
+}).optional().describe("Context emulation for diagnosing how the page behaves under other conditions.");
+
 export const commonBrowserOptionShape = {
+  emulation: emulationSchema,
   os: z.enum(["windows", "macos", "linux"]).optional().describe("Optional OS to spoof. Can be 'windows', 'macos', or 'linux'. If not specified, will rotate between all OS types."),
   waitStrategy: z.enum(["domcontentloaded", "load", "networkidle"]).optional().default(DEFAULT_WAIT_STRATEGY).describe("Wait strategy for page load. Defaults to 'domcontentloaded'. 'load' waits for all resources, 'networkidle' waits for network activity to finish."),
   timeout: z.number().min(5000).max(300000).optional().default(60000).describe("Timeout in milliseconds for page load (5-300 seconds)."),
@@ -240,6 +249,7 @@ export const networkSummaryToolShape = {
 
 export const sessionStartToolShape = {
   ...commonBrowserOptionShape,
+  recordHar: z.string().regex(/^[A-Za-z0-9._-]+\.har$/).optional().describe("Record all network traffic to CAMOUFOX_MCP_FILES_DIR/exports/<name>.har, written when the session closes."),
   profile: z.string().regex(PROFILE_NAME).optional().describe("Named persistent profile (cookies, localStorage, IndexedDB). Keeps logins between sessions; its os/locale/proxy/window/fingerprint override the input."),
 };
 
@@ -355,3 +365,35 @@ export const flowSaveToolShape = {
   flow: flowSchema,
 };
 export const flowRunToolShape = flowNameShape;
+
+const diagnoseSectionSchema = z.enum(["console", "network", "perf", "audit"]);
+
+export const diagnoseToolShape = {
+  ...commonBrowserToolShape,
+  url: z.string().optional().describe("URL to diagnose (one-shot). Provide exactly one of url or sessionId."),
+  sessionId: z.string().min(1).max(200).optional().describe("Existing session. Data covers everything since the session started (or since the last reload:true)."),
+  sections: z.array(diagnoseSectionSchema).min(1).optional().describe("Defaults to all: console (logs + uncaught errors), network (timings, sizes, failures), perf (navigation timing, Web Vitals, DOM stats), audit (SEO, a11y, security headers, cookies, mixed content)."),
+  settleMs: z.number().int().min(0).max(30000).optional().default(1500).describe("Extra time after load for vitals and late requests."),
+  reload: z.boolean().optional().default(false).describe("Sessions only: clear collected data and reload the page first for a clean measurement."),
+  maxEntries: z.number().int().min(1).max(1000).optional().default(100).describe("Max console/network entries returned per list."),
+  saveAs: z.string().regex(/^[A-Za-z0-9._-]+\.json$/).optional().describe("Also save the full report to CAMOUFOX_MCP_FILES_DIR/exports/<saveAs>."),
+};
+export type DiagnoseToolInput = WithWindowSize<z.infer<z.ZodObject<typeof diagnoseToolShape>>>;
+
+export const inspectToolShape = {
+  ...commonBrowserToolShape,
+  url: z.string().optional().describe("URL to inspect (one-shot). Provide exactly one of url or sessionId."),
+  sessionId: z.string().min(1).max(200).optional().describe("Existing session, inspected at its current page."),
+  selector: z.string().min(1).max(2000).describe("CSS selector of the element to inspect (first match)."),
+  frame: frameSchema,
+  properties: z.array(z.string().max(100)).max(100).optional().describe("Computed style properties to return. Defaults to a layout/typography set."),
+  maxRules: z.number().int().min(0).max(200).optional().default(30).describe("Max matched CSS rules to return."),
+};
+export type InspectToolInput = WithWindowSize<z.infer<z.ZodObject<typeof inspectToolShape>>>;
+
+export const sessionTraceToolShape = {
+  ...sessionIdShape,
+  action: z.enum(["start", "stop"]).describe("start: begin a Playwright trace (screenshots, DOM snapshots, network). stop: write it to exports/<saveAs>."),
+  saveAs: z.string().regex(/^[A-Za-z0-9._-]+\.zip$/).optional().describe("Required on stop. View with `npx playwright show-trace`."),
+};
+export type SessionTraceToolInput = z.infer<z.ZodObject<typeof sessionTraceToolShape>>;

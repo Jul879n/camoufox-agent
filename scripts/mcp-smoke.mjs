@@ -89,6 +89,38 @@ const scenarios = {
     await call("browse_profile_delete", { name: "herokuapp" });
     return { result: run, expect: "Secure Area" };
   },
+
+  async diagnose(call) {
+    const report = await call("browse_diagnose", { url: `${HEROKU}/broken`, settleMs: 800, emulation: { colorScheme: "dark" } });
+    const inspect = await call("browse_inspect", { url: `${HEROKU}/broken`, selector: "#box", properties: ["width", "color"] });
+    const checks = [
+      report.console?.uncaughtErrors?.some((e) => e.message.includes("fallo async")),
+      report.console?.entries?.some((e) => e.type === "error" && e.text.includes("boom")),
+      report.network?.httpErrors?.some((e) => e.url.endsWith("/missing.png")),
+      report.audit?.findings?.some((f) => f.code === "seo.h1"),
+      report.audit?.findings?.some((f) => f.code === "a11y.img-alt"),
+      report.perf?.navigation?.loadMs >= 0,
+      inspect.styles?.width === "120px" || inspect.styles?.width === "144px",
+      inspect.matchedRules?.some((r) => r.selector === ".box"),
+    ];
+    if (checks.some((c) => !c)) throw new Error(`checks: ${JSON.stringify(checks)}`);
+    return { result: { vitals: report.perf.vitals, audit: report.audit.summary, box: inspect.box }, expect: '"errors"' };
+  },
+
+  async "diagnose-session"(call) {
+    const exportsDir = path.join(env.CAMOUFOX_MCP_FILES_DIR, "exports");
+    for (const f of ["smoke.har", "smoke-trace.zip", "smoke-report.json"]) fs.rmSync(path.join(exportsDir, f), { force: true });
+    const start = await call("browse_session_start", { recordHar: "smoke.har", emulation: { timezoneId: "Asia/Tokyo" } });
+    const sessionId = start.sessionId;
+    await call("browse_session_navigate", { sessionId, url: `${HEROKU}/broken` });
+    await call("browse_session_trace", { sessionId, action: "start" });
+    const report = await call("browse_diagnose", { sessionId, reload: true, settleMs: 500, saveAs: "smoke-report.json" });
+    await call("browse_session_trace", { sessionId, action: "stop", saveAs: "smoke-trace.zip" });
+    await call("browse_session_close", { sessionId });
+    const files = ["smoke.har", "smoke-trace.zip", "smoke-report.json"].map((f) => fs.existsSync(path.join(exportsDir, f)) && fs.statSync(path.join(exportsDir, f)).size > 0);
+    if (files.includes(false) || !report.console?.uncaughtErrors?.length) throw new Error(`files=${files} errors=${report.console?.uncaughtErrors?.length}`);
+    return { result: { files, savedPath: report.savedPath }, expect: "smoke-report.json" };
+  },
 };
 
 const name = process.argv[2];
