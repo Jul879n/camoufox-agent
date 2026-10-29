@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-10-29
+
+### Added
+
+- `download` accepts `url` (instead of `selector`): the browser itself fetches it in a throwaway tab (its TLS, headers and cookies) and saves it to `descargas/`. A URL that returns an error status or a page fails immediately instead of waiting out the timeout. Recommended for large files.
+- `download` fails fast and says why: HTTP error status or network failure on the navigation, a page instead of a file, or no download starting within 30 s (separate from the transfer `timeout`). A failed or timed-out transfer discards the partial file and never closes the session.
+- Verified download kinds (smoke `download-kinds`): attachment link, `target=_blank`, redirect, JS navigation, blob URL, form POST and links inside iframes.
+- Snapshot `elements` include `href` for links.
+- `download` `timeout` up to 3 600 000 ms (default 120 000); the session operation cap follows it.
+- Snapshot `elements` now include elements inside open shadow roots (selector `host >> inner`) and direct child iframes (new `frame` field, pass it as the action's `frame`), plus `summary`, `iframe`, `label[for]`, `[onclick]`, `[draggable]`, media controls and any `[contenteditable]`.
+- `browse_screenshot` accepts `sessionId` (exactly one of `url` or `sessionId`).
+
+### Fixed
+
+- `download` used Playwright's pointer click, which hangs under Camoufox's virtual display; it now uses DOM activation (`upload` too).
+- Event promises of `download`/`upload` no longer reject without an owner when the click fails or times out, which killed the server.
+- A long download no longer closes the session at the 300 s operation cap.
+
+### Changed
+
+- An isolated `unhandledRejection` is logged instead of shutting the server down (and dropping every session). `uncaughtException` still shuts down.
+
 ## [0.3.0] - 2026-10-29
 
 ### Added

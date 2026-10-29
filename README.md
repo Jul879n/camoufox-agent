@@ -52,7 +52,7 @@ camoufox-agent fetch
 - **Sesiones sin límite de tiempo** (`CAMOUFOX_MCP_SESSION_TTL_MS` sin definir = nunca expiran). `CAMOUFOX_MCP_MAX_SESSIONS` (4 por defecto, máx. 64), `CAMOUFOX_MCP_MAX_CONCURRENCY` (4), `CAMOUFOX_MCP_MAX_SEQUENCE_ACTIONS` (100).
 - **Perfiles persistentes**: `browse_session_start { profile }` guarda cookies, localStorage e IndexedDB (`browse_profiles_list`, `browse_profile_delete`). El perfil fija `os`/`locale`/`proxy`/`window`/fingerprint.
 - **Credenciales sin exponerlas**: acción `fillSecret` (`CAMOUFOX_SECRET_<NOMBRE>` o `secrets.json` con chmod 600).
-- **Archivos**: acciones `upload` y `download` dentro de `CAMOUFOX_MCP_FILES_DIR` (por defecto `<HOME>/files`).
+- **Archivos**: acciones `upload` y `download` (por `selector` o por `url`, esta última recomendada para archivos grandes; `timeout` hasta 1 h) dentro de `CAMOUFOX_MCP_FILES_DIR` (por defecto `<HOME>/files`).
 - **Extracción estructurada**: `browse_extract` (paginación, `saveAs` JSON/CSV en `exports/`).
 - **Flujos**: `flow_save`, `flow_list`, `flow_run`; login por script, extracción y `schedule` (cron de 5 campos).
 - **Humano en el loop**: acciones `waitForHuman` y `promptCode`; con `serve`, el usuario interviene desde `/live`.

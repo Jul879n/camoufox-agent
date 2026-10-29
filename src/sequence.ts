@@ -1,20 +1,22 @@
-import type { Locator, Page } from "playwright-core";
+import type { Download as PwDownload, Locator, Page, Request as PwRequest, Response as PwResponse } from "playwright-core";
 import chalk from "chalk";
 import { ALLOW_EVALUATE, DEFAULT_ACTION_TIMEOUT_MS, SEQUENCE_TIMEOUT_MS } from "./config.js";
 import type { SequenceAction } from "./schemas.js";
 import type { ClickMode, RequestGuard, SequenceActionResult } from "./types.js";
-import { describeError, serializeBounded, withTimeout } from "./utils.js";
+import { describeError, redactUrl, serializeBounded, withTimeout } from "./utils.js";
 import { settleAndAssertSafe } from "./browser-runtime.js";
 import fs from "node:fs";
 import path from "node:path";
-import { validateTargetUrl } from "./policy.js";
+import { validateBrowserRequestUrl, validateTargetUrl } from "./policy.js";
 import { getSecret } from "./secrets.js";
 import { filesRoot, insideRoot } from "./files.js";
 import type { RichCollector } from "./diagnose/collector.js";
 import { runExpect } from "./expect.js";
 
-export function actionTimeout(action: { timeout?: number }): number {
-  return action.timeout ?? DEFAULT_ACTION_TIMEOUT_MS;
+export const DEFAULT_DOWNLOAD_TIMEOUT_MS = 120000;
+
+export function actionTimeout(action: { type?: string; timeout?: number }): number {
+  return action.timeout ?? (action.type === "download" ? DEFAULT_DOWNLOAD_TIMEOUT_MS : DEFAULT_ACTION_TIMEOUT_MS);
 }
 
 export function sequenceTimeoutBudget(actions: SequenceAction[]): number {
@@ -23,6 +25,80 @@ export function sequenceTimeoutBudget(actions: SequenceAction[]): number {
 
 export function isLocalOperationTimeout(error: unknown): boolean {
   return describeError(error).endsWith(" timed out.");
+}
+
+const DOWNLOAD_START_TIMEOUT_MS = 30000;
+
+// Runs `trigger` and waits for the download, failing fast on anything that shows it will not come:
+// an error response or network failure on a navigation, a page instead of a file, or no download
+// starting within DOWNLOAD_START_TIMEOUT_MS. Only the transfer itself gets the full `timeout`.
+async function runDownload(source: Page, trigger: () => Promise<void>, target: string, timeout: number): Promise<void> {
+  const context = source.context();
+  const startMs = Math.min(timeout, DOWNLOAD_START_TIMEOUT_MS);
+  let stopWatching = (): void => undefined;
+  // Only requests issued during this call count; late events of an earlier navigation must not leak in.
+  const mine = new WeakSet<PwRequest>();
+  const failure = new Promise<never>((_, reject) => {
+    const onRequest = (request: PwRequest): void => { mine.add(request); };
+    const onResponse = (response: PwResponse): void => {
+      if (mine.has(response.request()) && response.request().isNavigationRequest() && response.status() >= 400) {
+        reject(new Error(`Download failed with HTTP ${response.status()} at ${redactUrl(response.url())}.`));
+      }
+    };
+    const onFailed = (request: PwRequest): void => {
+      const reason = request.failure()?.errorText ?? "unknown error";
+      // A navigation that turns into a download is reported as aborted; that is not a failure.
+      if (mine.has(request) && request.isNavigationRequest() && !/abort/i.test(reason)) reject(new Error(`Download request failed: ${reason}.`));
+    };
+    context.on("request", onRequest);
+    context.on("response", onResponse);
+    context.on("requestfailed", onFailed);
+    stopWatching = () => { context.off("request", onRequest); context.off("response", onResponse); context.off("requestfailed", onFailed); };
+  });
+  failure.catch(() => undefined);
+  const started = source.waitForEvent("download", { timeout: startMs });
+  started.catch(() => undefined);
+
+  let download: PwDownload;
+  try {
+    download = await Promise.race([(async () => { await trigger(); return started; })(), failure]);
+  } catch (error) {
+    if (/Timeout \d+ms exceeded/.test(describeError(error))) {
+      throw new Error(`Download did not start within ${Math.round(startMs / 1000)}s: no download event and no error response from the site.`, { cause: error });
+    }
+    throw error;
+  } finally {
+    stopWatching();
+  }
+
+  try {
+    // Not a bare " timed out." message: that wording makes the session layer close the whole session.
+    await withTimeout(download.saveAs(target), timeout, "Download transfer").catch((error: unknown) => {
+      if (isLocalOperationTimeout(error)) throw new Error(`Download transfer exceeded ${Math.round(timeout / 1000)}s; partial file discarded.`, { cause: error });
+      throw error;
+    });
+    const reason = await download.failure();
+    if (reason) throw new Error(`Download failed: ${reason}.`);
+  } catch (error) {
+    fs.rmSync(target, { force: true });
+    throw error;
+  }
+}
+
+// Opens the URL in a throwaway tab so the browser itself fetches it (its TLS, headers and
+// cookies); servers that reject non-browser clients still serve it. No click or pointer input.
+async function navigateDownload(page: Page, url: URL, target: string, timeout: number): Promise<void> {
+  const tab = await page.context().newPage();
+  try {
+    await runDownload(tab, async () => {
+      // goto rejects with "Download is starting" for attachments; the download event is the result.
+      // If it resolves, the URL rendered a page instead of a file.
+      const response = await tab.goto(url.toString(), { timeout, waitUntil: "commit" }).catch(() => null);
+      if (response) throw new Error(response.ok() ? "URL did not trigger a download (the server returned a page)." : `Download failed with HTTP ${response.status()}.`);
+    }, target, timeout);
+  } finally {
+    await tab.close().catch(() => undefined);
+  }
 }
 
 export function resolveLocator(page: Page, selector: string, frame?: string): Locator {
@@ -215,7 +291,8 @@ export async function runSequenceAction(
         await locator.setInputFiles(files, { timeout });
       } else {
         const chooser = page.waitForEvent("filechooser", { timeout });
-        await locator.click({ timeout });
+        chooser.catch(() => undefined);
+        await Promise.race([domClick(locator, timeout), chooser]);
         await (await chooser).setFiles(files);
       }
       return { index, type: action.type, selector: action.selector, status: "ok", durationMs: Date.now() - started };
@@ -226,10 +303,22 @@ export async function runSequenceAction(
       fs.mkdirSync(dir, { recursive: true });
       const target = path.join(dir, action.filename);
       if (fs.existsSync(target)) throw new Error(`File already exists: descargas/${action.filename}`);
-      const download = page.waitForEvent("download", { timeout });
-      await resolveLocator(page, action.selector, action.frame).click({ timeout });
-      await (await download).saveAs(target);
-      return { index, type: action.type, selector: action.selector, status: "ok", durationMs: Date.now() - started };
+      if (action.url) {
+        const url = await validateBrowserRequestUrl(action.url);
+        rawUrls.push(action.url);
+        await navigateDownload(page, url, target, timeout);
+        return { index, type: action.type, status: "ok", result: `descargas/${action.filename}`, durationMs: Date.now() - started };
+      }
+      if (!action.selector) throw new Error("download requires selector or url");
+      const locator = resolveLocator(page, action.selector, action.frame);
+      const startMs = Math.min(timeout, DOWNLOAD_START_TIMEOUT_MS);
+      await runDownload(page, async () => {
+        // Playwright's own wait reports "Timeout Nms exceeded", which keeps the session alive (a bare
+        // " timed out." from domClick on a missing element would close it).
+        await locator.waitFor({ state: "attached", timeout: startMs });
+        await domClick(locator, startMs);
+      }, target, timeout);
+      return { index, type: action.type, selector: action.selector, status: "ok", result: `descargas/${action.filename}`, durationMs: Date.now() - started };
     }
 
     case "dialog":

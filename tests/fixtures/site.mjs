@@ -2,6 +2,7 @@
 import http from "node:http";
 import { createHash } from "node:crypto";
 
+export const BIG_SIZE = 8 * 1024 * 1024;
 const PASS = "SuperSecretPassword!";
 
 function page(body) { return `<!doctype html><html><head><meta charset="utf-8"><title>fixture</title></head><body>${body}</body></html>`; }
@@ -50,12 +51,39 @@ export function startFixtureSite(port = 0) {
       if (url.pathname === "/api/data") {
         return send(200, JSON.stringify({ items: [1, 2, 3] }), { "content-type": "application/json" });
       }
+      if (url.pathname === "/redirect-file") { res.writeHead(302, { location: "/big.bin" }); return res.end(); }
+      if (url.pathname === "/file-post" && req.method === "POST") {
+        res.writeHead(200, { "content-type": "application/octet-stream", "content-disposition": 'attachment; filename="post.bin"' });
+        return res.end(Buffer.alloc(1024 * 1024, 3));
+      }
+      if (url.pathname === "/downloads") {
+        return send(200, page(`<a id="d-redirect" href="/redirect-file">redirect</a>
+<a id="d-blank" href="/big.bin" target="_blank">blank</a>
+<button id="d-js" onclick="location.href='/big.bin'">js</button>
+<button id="d-blob" onclick="document.title='blob-clicked';const a=document.createElement('a');a.href=window.URL.createObjectURL(new Blob([new Uint8Array(1048576).fill(5)]));a.download='blob.bin';document.body.appendChild(a);a.click()">blob</button>
+<form method="post" action="/file-post"><button id="d-post" type="submit">post</button></form>
+<iframe id="fr" srcdoc="<a id='d-frame' href='/big.bin' download>frame</a>"></iframe>`));
+      }
+      if (url.pathname === "/gone") return send(404, page("<h1>gone</h1>"));
+      if (url.pathname === "/frames") {
+        return send(200, page(`<button id="top">top</button>
+<div id="host"></div><details><summary id="sum">more</summary>hidden</details><div id="oc" onclick="document.title='oc'">oc</div>
+<iframe id="fr" src="/frame-inner"></iframe>
+<script>const r = document.getElementById("host").attachShadow({mode:"open"}); r.innerHTML = '<button id="sh" onclick="document.title=\\'shadow\\'">shadow</button>';</script>`));
+      }
+      if (url.pathname === "/frame-inner") {
+        return send(200, page(`<button id="inner" onclick="parent.document.title='inner'">inner</button>`));
+      }
+      if (url.pathname === "/big.bin") {
+        res.writeHead(200, { "content-type": "application/octet-stream", "content-disposition": 'attachment; filename="big.bin"' });
+        return res.end(Buffer.alloc(BIG_SIZE, 7));
+      }
       if (url.pathname === "/app") {
         return send(200, `<!doctype html><html><head><meta charset="utf-8"><title>App</title><style>.used{color:red}.unused{color:blue}</style></head><body>
 <h1 id="title" class="used">Demo</h1>
 <button id="inc">+1</button> <span id="count">0</span>
 <button id="load">load</button> <button id="bad">bad</button> <button id="ask">ask</button>
-<a id="pop" href="/app" target="_blank">pop</a>
+<a id="pop" href="/app" target="_blank">pop</a> <a id="dl" download href="/big.bin">dl</a> <a id="dlbad" download href="/gone">dlbad</a>
 <div id="src" draggable="true">src</div><div id="dst">dst</div>
 <span id="touch"></span>
 <button id="leak">leak</button> <button id="ws">ws</button> <button id="jank">jank</button>

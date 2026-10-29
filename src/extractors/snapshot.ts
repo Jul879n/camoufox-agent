@@ -3,184 +3,227 @@ import type { SnapshotElement, SnapshotPayload } from "../types.js";
 import { describeError, redactUrl, truncateString, withTimeout } from "../utils.js";
 import { extractPageContent } from "./content.js";
 
+type DocumentSnapshot = { elements: SnapshotElement[]; truncated: boolean; found: boolean };
+type DocumentArgs = { maxItems: number; cssSelector?: string; selectorOf?: Element };
+
+// Self-contained: Playwright serializes it into the page or any (cross-origin) frame.
+function snapshotDocument(args: DocumentArgs): DocumentSnapshot | string {
+const { maxItems, cssSelector } = args;
+if (args.selectorOf) return fullSelector(args.selectorOf);
+const root = cssSelector
+  ? document.querySelector(cssSelector)
+  : document.body ?? document.documentElement;
+
+if (!root) {
+  return { elements: [], truncated: false, found: false };
+}
+
+function textOf(element: Element): string {
+  return (element.textContent ?? "").replace(/\s+/g, " ").trim().slice(0, 300);
+}
+
+function cssIdent(value: string): string {
+  if (typeof CSS !== "undefined" && typeof CSS.escape === "function") {
+    return CSS.escape(value);
+  }
+
+  return value.replace(/[^a-zA-Z0-9_-]/g, "\\$&");
+}
+
+function selectorFor(element: Element): string {
+  if (element.id) {
+    return `#${cssIdent(element.id)}`;
+  }
+
+  const path: string[] = [];
+  let current: Element | null = element;
+  while (current && current !== document.documentElement && path.length < 8) {
+    let part = current.tagName.toLowerCase();
+    if (current.classList.length > 0) {
+      part += `.${Array.from(current.classList).slice(0, 2).map(cssIdent).join(".")}`;
+    }
+
+    const currentTagName = current.tagName;
+    const parent: Element | null = current.parentElement;
+    if (parent) {
+      const sameTagSiblings = Array.from(parent.children).filter((child: Element) => child.tagName === currentTagName);
+      if (sameTagSiblings.length > 1) {
+        part += `:nth-of-type(${sameTagSiblings.indexOf(current) + 1})`;
+      }
+    }
+
+    path.unshift(part);
+    current = parent;
+  }
+
+  return path.join(" > ");
+}
+
+// Playwright's CSS engine pierces open shadow roots, so `host >> inner` resolves.
+function fullSelector(element: Element): string {
+  const rootNode = element.getRootNode();
+  if (rootNode instanceof ShadowRoot) return `${fullSelector(rootNode.host)} >> ${selectorFor(element)}`;
+  return selectorFor(element);
+}
+
+function inferredRole(element: Element): string | undefined {
+  const explicit = element.getAttribute("role");
+  if (explicit) {
+    return explicit;
+  }
+
+  const tagName = element.tagName.toLowerCase();
+  if (tagName === "a" && element.hasAttribute("href")) {
+    return "link";
+  }
+  if (tagName === "button" || tagName === "summary") {
+    return "button";
+  }
+  if (tagName === "select") {
+    return "combobox";
+  }
+  if (tagName === "textarea") {
+    return "textbox";
+  }
+  if (tagName === "input") {
+    const type = (element.getAttribute("type") ?? "text").toLowerCase();
+    if (["button", "submit", "reset"].includes(type)) {
+      return "button";
+    }
+    if (type === "checkbox") {
+      return "checkbox";
+    }
+    if (type === "radio") {
+      return "radio";
+    }
+    return "textbox";
+  }
+
+  return undefined;
+}
+
+function accessibleName(element: Element): string | undefined {
+  const direct = element.getAttribute("aria-label")
+    ?? element.getAttribute("alt")
+    ?? element.getAttribute("title")
+    ?? element.getAttribute("placeholder");
+  if (direct?.trim()) {
+    return direct.trim().slice(0, 300);
+  }
+
+  const labelledBy = element.getAttribute("aria-labelledby");
+  if (labelledBy) {
+    const text = labelledBy
+      .split(/\s+/)
+      .map((id) => document.getElementById(id)?.textContent ?? "")
+      .join(" ")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (text) {
+      return text.slice(0, 300);
+    }
+  }
+
+  return textOf(element) || undefined;
+}
+
+function isVisible(element: Element): boolean {
+  const rect = element.getBoundingClientRect();
+  if (rect.width <= 0 || rect.height <= 0) {
+    return false;
+  }
+
+  const style = window.getComputedStyle(element);
+  return style.display !== "none" && style.visibility !== "hidden" && style.visibility !== "collapse";
+}
+
+const candidateSelector = [
+  "a[href]",
+  "button",
+  "input",
+  "select",
+  "textarea",
+  "[role]",
+  "[tabindex]:not([tabindex='-1'])",
+  "[contenteditable]:not([contenteditable='false'])",
+  "summary",
+  "iframe",
+  "label[for]",
+  "[onclick]",
+  "[draggable='true']",
+  "video[controls]",
+  "audio[controls]",
+].join(",");
+const candidates: Element[] = root.matches(candidateSelector) ? [root] : [];
+const collect = (scope: ParentNode): void => {
+  for (const element of Array.from(scope.querySelectorAll("*"))) {
+    if (element.matches(candidateSelector)) candidates.push(element);
+    if (element.shadowRoot) collect(element.shadowRoot);
+  }
+};
+collect(root);
+if (root.shadowRoot) collect(root.shadowRoot);
+
+const elements = [];
+let truncated = false;
+for (const element of candidates) {
+  if (!isVisible(element)) {
+    continue;
+  }
+
+  if (elements.length >= maxItems) {
+    truncated = true;
+    break;
+  }
+
+  const rect = element.getBoundingClientRect();
+  elements.push({
+    tag: element.tagName.toLowerCase(),
+    selector: fullSelector(element),
+    href: element.tagName === "A" && (element as HTMLAnchorElement).href ? (element as HTMLAnchorElement).href.slice(0, 1000) : undefined,
+    role: inferredRole(element),
+    name: accessibleName(element),
+    text: textOf(element) || undefined,
+    bounds: {
+      x: Math.round(rect.x),
+      y: Math.round(rect.y),
+      width: Math.round(rect.width),
+      height: Math.round(rect.height),
+    },
+  });
+}
+
+return {
+  elements,
+  truncated,
+  found: true,
+};
+}
+
 export async function extractSnapshotElements(
   page: Page,
   maxElements: number,
   selector?: string,
-): Promise<{ elements: SnapshotElement[]; truncated: boolean; found: boolean }> {
-  return page.evaluate(
-    ({ maxItems, cssSelector }: { maxItems: number; cssSelector?: string }) => {
-      const root = cssSelector
-        ? document.querySelector(cssSelector)
-        : document.body ?? document.documentElement;
+): Promise<DocumentSnapshot> {
+  const main = await page.evaluate(snapshotDocument, { maxItems: maxElements, cssSelector: selector }) as DocumentSnapshot;
+  if (selector || !main.found) return main;
 
-      if (!root) {
-        return { elements: [], truncated: false, found: false };
-      }
-
-      function textOf(element: Element): string {
-        return (element.textContent ?? "").replace(/\s+/g, " ").trim().slice(0, 300);
-      }
-
-      function cssIdent(value: string): string {
-        if (typeof CSS !== "undefined" && typeof CSS.escape === "function") {
-          return CSS.escape(value);
-        }
-
-        return value.replace(/[^a-zA-Z0-9_-]/g, "\\$&");
-      }
-
-      function selectorFor(element: Element): string {
-        if (element.id) {
-          return `#${cssIdent(element.id)}`;
-        }
-
-        const path: string[] = [];
-        let current: Element | null = element;
-        while (current && current !== document.documentElement && path.length < 8) {
-          let part = current.tagName.toLowerCase();
-          if (current.classList.length > 0) {
-            part += `.${Array.from(current.classList).slice(0, 2).map(cssIdent).join(".")}`;
-          }
-
-          const currentTagName = current.tagName;
-          const parent: Element | null = current.parentElement;
-          if (parent) {
-            const sameTagSiblings = Array.from(parent.children).filter((child: Element) => child.tagName === currentTagName);
-            if (sameTagSiblings.length > 1) {
-              part += `:nth-of-type(${sameTagSiblings.indexOf(current) + 1})`;
-            }
-          }
-
-          path.unshift(part);
-          current = parent;
-        }
-
-        return path.join(" > ");
-      }
-
-      function inferredRole(element: Element): string | undefined {
-        const explicit = element.getAttribute("role");
-        if (explicit) {
-          return explicit;
-        }
-
-        const tagName = element.tagName.toLowerCase();
-        if (tagName === "a" && element.hasAttribute("href")) {
-          return "link";
-        }
-        if (tagName === "button") {
-          return "button";
-        }
-        if (tagName === "select") {
-          return "combobox";
-        }
-        if (tagName === "textarea") {
-          return "textbox";
-        }
-        if (tagName === "input") {
-          const type = (element.getAttribute("type") ?? "text").toLowerCase();
-          if (["button", "submit", "reset"].includes(type)) {
-            return "button";
-          }
-          if (type === "checkbox") {
-            return "checkbox";
-          }
-          if (type === "radio") {
-            return "radio";
-          }
-          return "textbox";
-        }
-
-        return undefined;
-      }
-
-      function accessibleName(element: Element): string | undefined {
-        const direct = element.getAttribute("aria-label")
-          ?? element.getAttribute("alt")
-          ?? element.getAttribute("title")
-          ?? element.getAttribute("placeholder");
-        if (direct?.trim()) {
-          return direct.trim().slice(0, 300);
-        }
-
-        const labelledBy = element.getAttribute("aria-labelledby");
-        if (labelledBy) {
-          const text = labelledBy
-            .split(/\s+/)
-            .map((id) => document.getElementById(id)?.textContent ?? "")
-            .join(" ")
-            .replace(/\s+/g, " ")
-            .trim();
-          if (text) {
-            return text.slice(0, 300);
-          }
-        }
-
-        return textOf(element) || undefined;
-      }
-
-      function isVisible(element: Element): boolean {
-        const rect = element.getBoundingClientRect();
-        if (rect.width <= 0 || rect.height <= 0) {
-          return false;
-        }
-
-        const style = window.getComputedStyle(element);
-        return style.display !== "none" && style.visibility !== "hidden" && style.visibility !== "collapse";
-      }
-
-      const candidateSelector = [
-        "a[href]",
-        "button",
-        "input",
-        "select",
-        "textarea",
-        "[role]",
-        "[tabindex]:not([tabindex='-1'])",
-        "[contenteditable='true']",
-      ].join(",");
-      const candidates = [
-        ...(root.matches(candidateSelector) ? [root] : []),
-        ...Array.from(root.querySelectorAll(candidateSelector)),
-      ];
-
-      const elements = [];
-      let truncated = false;
-      for (const element of candidates) {
-        if (!isVisible(element)) {
-          continue;
-        }
-
-        if (elements.length >= maxItems) {
-          truncated = true;
-          break;
-        }
-
-        const rect = element.getBoundingClientRect();
-        elements.push({
-          tag: element.tagName.toLowerCase(),
-          selector: selectorFor(element),
-          role: inferredRole(element),
-          name: accessibleName(element),
-          text: textOf(element) || undefined,
-          bounds: {
-            x: Math.round(rect.x),
-            y: Math.round(rect.y),
-            width: Math.round(rect.width),
-            height: Math.round(rect.height),
-          },
-        });
-      }
-
-      return {
-        elements,
-        truncated,
-        found: true,
-      };
-    },
-    { maxItems: maxElements, cssSelector: selector },
-  );
+  // Direct child frames only: the action `frame` option takes one iframe selector.
+  const mainFrame = page.mainFrame();
+  for (const frame of page.frames()) {
+    if (frame.parentFrame() !== mainFrame) continue;
+    if (main.elements.length >= maxElements) { main.truncated = true; break; }
+    try {
+      const handle = await frame.frameElement();
+      const frameSelector = await mainFrame.evaluate(snapshotDocument, { maxItems: 0, selectorOf: handle as never }) as string;
+      const inner = await frame.evaluate(snapshotDocument, { maxItems: maxElements - main.elements.length }) as DocumentSnapshot;
+      for (const element of inner.elements) main.elements.push({ ...element, frame: frameSelector });
+      if (inner.truncated) main.truncated = true;
+    } catch {
+      // Detached or navigating frame: skip it.
+    }
+  }
+  return main;
 }
 
 const SNAPSHOT_ATTEMPTS = 3;

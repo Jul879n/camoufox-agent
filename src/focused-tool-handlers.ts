@@ -5,7 +5,9 @@ import { maybeDetectCaptcha } from "./captcha.js";
 import { buildFindPayload, buildFormsPayload, buildLinksPayload, buildNetworkSummary, buildOutlinePayload } from "./extractors.js";
 import { buildSuccessContent, buildToolError, buildToolFailure } from "./responses.js";
 import { captureScreenshot, isScreenshotDimensionAllowed } from "./screenshots.js";
-import { redactUrl } from "./utils.js";
+import { redactDeep, redactUrl } from "./utils.js";
+import { getSession, runSessionExclusive, sessionSanitizedError } from "./sessions.js";
+import type { SessionRecord } from "./types.js";
 import { appendDiagnostics } from "./diagnostics.js";
 
 export async function handleLinks(input: LinksToolInput) {
@@ -147,7 +149,36 @@ export async function handleFind(input: FindToolInput) {
   }
 }
 
-export async function handleScreenshot(input: ScreenshotToolInput) {
+async function handleSessionScreenshot(input: ScreenshotToolInput, sessionId: string) {
+  let session: SessionRecord | undefined;
+  try {
+    const current = await getSession(sessionId);
+    session = current;
+    return await runSessionExclusive(current, async () => {
+      const screenshotResult = await captureScreenshot(current.page, redactUrl(current.page.url()), {
+        fullPage: input.fullPage,
+        selector: input.selector,
+        type: input.type,
+        quality: input.quality,
+      });
+      current.requestGuard.assertAllowed();
+      const payload = {
+        sessionId: current.id,
+        url: redactUrl(current.page.url()),
+        title: await current.page.title(),
+        screenshot: screenshotResult.screenshotMetadata,
+      };
+      return buildSuccessContent(redactDeep(payload, current.secrets), screenshotResult);
+    });
+  } catch (error) {
+    return buildToolError(`Failed to screenshot session. Error: ${sessionSanitizedError(error, session)}`);
+  }
+}
+
+export async function handleScreenshot(rawInput: ScreenshotToolInput) {
+  if (Boolean(rawInput.url) === Boolean(rawInput.sessionId)) return buildToolError("Provide exactly one of url or sessionId");
+  if (rawInput.sessionId) return handleSessionScreenshot(rawInput, rawInput.sessionId);
+  const input = { ...rawInput, url: rawInput.url as string };
   // applyStealthProfile is applied once inside runBrowserOperation.
   const safeUrl = redactUrl(input.url);
 

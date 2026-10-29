@@ -115,6 +115,10 @@ export interface BrowsePayload {
 export interface SnapshotElement {
   tag: string;
   selector: string;
+  /** Resolved target of `a[href]` elements, e.g. to feed `download { url }`. */
+  href?: string;
+  /** CSS selector of the iframe holding the element; pass it as the action's `frame`. */
+  frame?: string;
   role?: string;
   name?: string;
   text?: string;

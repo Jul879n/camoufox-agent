@@ -35,7 +35,7 @@ On a fresh machine, install the Camoufox binary once. From a repository checkout
 - **Sessions never expire** (`CAMOUFOX_MCP_SESSION_TTL_MS` unset = no limit). Close them with `browse_session_close`.
 - **Persistent logins**: `browse_session_start { profile: "name" }` keeps cookies/localStorage/IndexedDB between sessions. `browse_profiles_list`, `browse_profile_delete`.
 - **Credentials without exposing them**: action `fillSecret { selector, secret }` reads `CAMOUFOX_SECRET_<NAME>` or `~/.camoufox-agent/secrets.json` (`camoufox-agent secret set <name>`). The value never appears in output.
-- **Files**: actions `upload { selector, files }` (paths inside `CAMOUFOX_MCP_FILES_DIR`) and `download { selector, filename }` (saved to `descargas/`).
+- **Files**: actions `upload { selector, files }` (paths inside `CAMOUFOX_MCP_FILES_DIR`) and `download { selector | url, filename, timeout? }` (saved to `descargas/`; prefer `url` for large files, timeout up to 1 h).
 - **Navigation inside a sequence/session**: action `goto { url }`.
 - **Structured extraction**: `browse_extract { url | sessionId, itemSelector, fields, nextSelector?, maxPages?, saveAs? }` returns rows and can save `exports/<name>.json|csv`.
 - **Flows**: `flow_save`, `flow_list`, `flow_run` (login script + optional extract + cron `schedule`), also `camoufox-agent run <flow>`.
@@ -98,7 +98,7 @@ Start from the question, not from `browse`. `browse` returns a wall of page text
 | Does the page contain "X"? Where? | `browse_find` with `query` | Bounded context around matches |
 | What can I click/type? (interactive map) | `browse_snapshot` | Visible text + ARIA + elements |
 | Navigate + a few actions, then read once | `browse_sequence` | One round trip, bounded actions |
-| A screenshot | `browse_screenshot` (or `screenshot: true` on `browse`) | Image output |
+| A screenshot | `browse_screenshot` (`url` or `sessionId`; or `screenshot: true` on `browse`) | Image output |
 | Console errors / failed requests | `browse_console`, `browse_network_summary` | Focused diagnostics |
 | Multi-step flow with state between calls | session tools | Persistent page across calls |
 
