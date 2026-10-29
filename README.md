@@ -9,6 +9,7 @@ Dos modos en un solo binario:
 | `camoufox-agent` | Servidor MCP por stdio (Claude Code, opencode, Hermes, OpenClaw, Codex, Cursor…) |
 | `camoufox-agent serve` | HTTP: REST para apps web, MCP Streamable HTTP en `/mcp`, vista en vivo en `/live`, cron |
 | `camoufox-agent run <flujo>` | Ejecuta un flujo guardado una vez (para cron/launchd/Programador de tareas) |
+| `camoufox-agent test <flujo…> \| --all [--junit f.xml]` | Ejecuta flujos como pruebas; exit 1 si alguna falla |
 | `camoufox-agent secret set <nombre>` / `secret list` | Credenciales para `fillSecret` |
 | `camoufox-agent fetch` / `doctor` | Descarga del navegador / diagnóstico |
 
@@ -61,9 +62,51 @@ camoufox-agent fetch
   - `browse_inspect`: caja, estilos computados, reglas CSS aplicadas, visibilidad, desbordamiento y árbol de accesibilidad de un selector.
   - `emulation` en cualquier tool: `colorScheme`, `reducedMotion`, `timezoneId`, `geolocation`, `offline`.
   - `browse_session_start { recordHar }` (HAR al cerrar) y `browse_session_trace` (trace de Playwright en `.zip`).
-  - Límite: Camoufox es Firefox, sin CDP. No hay Lighthouse, performance traces de Chrome, heap snapshots ni cobertura; en Firefox faltan además CLS y long tasks (el informe los lista como no soportados).
+  - Límite: Camoufox es Firefox, sin CDP (detalle y equivalentes en «Depurar y probar apps»). Faltan CLS y long tasks nativos; `tbtApproxMs` los aproxima.
+
+- **Depuración y pruebas** (0.3.0): ver [Depurar y probar apps](#depurar-y-probar-apps).
 
 Datos en `CAMOUFOX_AGENT_HOME` (por defecto `~/.camoufox-agent`): `profiles/`, `flows/`, `runs/`, `files/`, `secrets.json`.
+
+## Depurar y probar apps
+
+Camoufox es Firefox (Juggler, sin CDP): no hay heap, profiler, cobertura JS ni throttling de CPU. Cada función de `chrome-devtools-mcp` tiene aquí un equivalente que sí funciona en Firefox:
+
+| `chrome-devtools-mcp` | camoufox-agent |
+|---|---|
+| `lighthouse_audit` | `browse_audit`: axe-core (accesibilidad), SEO, buenas prácticas, seguridad y puntaje de rendimiento con la fórmula de Lighthouse sobre métricas de Firefox (sin CLS; TBT y Speed Index aproximados). Comparable entre corridas de camoufox-agent, no idéntico al de Chrome |
+| `take_heapsnapshot` | `browse_profile_app { mode: "leaks" }`: repite una acción N veces y mide el crecimiento de nodos DOM, listeners y timers |
+| cobertura | `browse_profile_app { mode: "cssCoverage" }` (reglas CSS que nunca aplicaron). Sin cobertura JS |
+| `performance_start_trace` | `browse_session_trace` (trace de Playwright), `browse_diagnose` (cascada de recursos, `tbtApproxMs` y `longFrames`, presupuestos con `budgets`) |
+| `emulate` (red) | `network` en cualquier tool y `browse_session_network`: latencia, bloqueos, mocks y `offline` |
+| `emulate` (móvil) | `emulation.device` (`iphone-15`, `pixel-8`, `ipad`, `laptop-720p`, `desktop-1080p`), `hasTouch`, `forcedColors`, `contrast`, `javaScriptEnabled`, `httpCredentials` |
+| `list_network_requests` / `get_network_request` | `browse_diagnose` + `browse_network_request { id }` (cabeceras, cuerpo, tiempos) |
+| `list_pages` / `select_page` / `handle_dialog` | `browse_session_tabs` y la acción `dialog` |
+| `drag`, `fill_form`, `click`… | acciones `drag`, `fill`, `click`… |
+
+**Pérdidas reales sin Chrome**: throttling de CPU, user agent móvil (`isMobile` no existe en Firefox y cambiar el user agent rompería la huella) y ver cómo renderiza Chrome. Camoufox tampoco genera video (`recordVideo` no produce archivo) y fija `navigator.maxTouchPoints` en 0 aunque `hasTouch` esté activo (siguen funcionando `ontouchstart` y `pointer: coarse`).
+
+Además, lo que `chrome-devtools-mcp` no tiene:
+
+- **Aserciones** `expect` (`visible`, `text`, `value`, `count`, `url`, `noConsoleErrors`, `noFailedRequests`…) con reintento, `soft` y la acción `clearDiagnostics`.
+- **Flujos como pruebas**: `flow_run` marca cada paso `passed|failed|error`, guarda una captura `-fail.png` y el contexto de la falla; `camoufox-agent test <flujo…> | --all [--junit archivo.xml]` sale con 1 si algo falla.
+- **Mocks de red**, frames de **WebSocket** (`browse_diagnose` → `network.websockets`), **storage** (`browse_storage`), **regresión visual** (`browse_visual_diff`) y **presupuestos** de rendimiento.
+
+```jsonc
+// Auditoría móvil con informe HTML
+browse_audit { "url": "http://localhost:3000/app", "formFactor": "mobile", "saveAs": "audit.html" }
+
+// Probar que +1 sube el contador, con la API simulada y sin errores de consola
+browse_session_network { "sessionId": "…", "network": { "mocks": [{ "url": "**/api/data", "status": 500 }] } }
+browse_session_action { "sessionId": "…", "action": { "type": "click", "selector": "#inc" } }
+browse_session_action { "sessionId": "…", "action": { "type": "expect", "check": "text", "selector": "#count", "equals": "1" } }
+
+// Fugas al repetir una acción
+browse_profile_app { "sessionId": "…", "mode": "leaks", "actions": [{ "type": "click", "selector": "#open" }, { "type": "click", "selector": "#close" }], "iterations": 10 }
+
+// Línea base visual y comparación
+browse_visual_diff { "sessionId": "…", "name": "home", "maxDiffPct": 0.5 }
+```
 
 ## Servidor HTTP (`serve`)
 
@@ -109,7 +152,7 @@ Los datos quedan en `./data` (el contenedor corre con uid 1001: `chown 1001 data
 
 ```bash
 npm run lint && npm run test:unit
-for s in upload profile extract; do node scripts/mcp-smoke.mjs $s; done
+for s in upload profile extract diagnose diagnose-session expect flow-test tabs-dialogs drag network emulation storage perf audit profile-app visual; do node scripts/mcp-smoke.mjs $s; done
 CAMOUFOX_SECRET_HEROKU_PASS='SuperSecretPassword!' node scripts/mcp-smoke.mjs secret
 CAMOUFOX_SECRET_HEROKU_PASS='SuperSecretPassword!' node scripts/mcp-smoke.mjs flow
 ```

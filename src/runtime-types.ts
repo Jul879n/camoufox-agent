@@ -1,4 +1,5 @@
 import type { Browser, BrowserContext, Page, Response } from "playwright-core";
+import type { NetworkController } from "./network-control.js";
 import type { RichCollector } from "./diagnose/collector.js";
 import type { CaptchaPolicy, DiagnosticsPayload, ScreenshotMetadata } from "./payload-types.js";
 
@@ -39,6 +40,8 @@ export interface SessionRecord {
   secrets: string[];
   createdAt: number;
   rich?: RichCollector;
+  network?: NetworkController;
+  dialogPolicy?: { accept: boolean; promptText?: string };
   harPath?: string;
   tracing?: boolean;
   profile?: string;
@@ -73,6 +76,26 @@ export interface CamoufoxOptions {
   i_know_what_im_doing?: boolean;
 }
 
+export interface NetworkMock {
+  url: string;
+  method?: string;
+  status?: number;
+  body?: string;
+  json?: unknown;
+  contentType?: string;
+  headers?: Record<string, string>;
+  delayMs?: number;
+  abort?: boolean;
+}
+
+export interface NetworkControl {
+  latencyMs?: number;
+  blockUrls?: string[];
+  mocks?: NetworkMock[];
+  extraHeaders?: Record<string, string>;
+  offline?: boolean;
+}
+
 export interface BrowserLaunchInput {
   os?: SupportedOs;
   waitStrategy?: WaitStrategy;
@@ -96,12 +119,21 @@ export interface BrowserLaunchInput {
   includeNetwork?: boolean;
   stealthProfile?: StealthProfile;
   captchaPolicy?: CaptchaPolicy;
+  network?: NetworkControl;
+  // Internal: create the context with the page CSP bypassed (used by browse_audit to inject axe).
+  bypassCSP?: boolean;
   emulation?: {
     colorScheme?: "light" | "dark" | "no-preference";
     reducedMotion?: "reduce" | "no-preference";
     timezoneId?: string;
     geolocation?: { latitude: number; longitude: number };
     offline?: boolean;
+    device?: "iphone-15" | "pixel-8" | "ipad" | "laptop-720p" | "desktop-1080p";
+    hasTouch?: boolean;
+    forcedColors?: "active" | "none";
+    contrast?: "more" | "no-preference";
+    javaScriptEnabled?: boolean;
+    httpCredentials?: { username: string; password: string };
   };
   // Internal: runs on the fresh context before any page exists (used by diagnostics).
   setup?: (context: BrowserContext) => Promise<void> | void;

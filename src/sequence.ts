@@ -10,6 +10,8 @@ import path from "node:path";
 import { validateTargetUrl } from "./policy.js";
 import { getSecret } from "./secrets.js";
 import { filesRoot, insideRoot } from "./files.js";
+import type { RichCollector } from "./diagnose/collector.js";
+import { runExpect } from "./expect.js";
 
 export function actionTimeout(action: { timeout?: number }): number {
   return action.timeout ?? DEFAULT_ACTION_TIMEOUT_MS;
@@ -85,6 +87,7 @@ export async function runSequenceAction(
   index: number,
   rawUrls: string[],
   secrets: string[],
+  collector?: RichCollector,
 ): Promise<SequenceActionResult> {
   const started = Date.now();
   const timeout = actionTimeout(action);
@@ -92,6 +95,23 @@ export async function runSequenceAction(
   switch (action.type) {
     case "click":
       await activateElement(page, action.selector, timeout, action.frame, action.clickMode);
+      return { index, type: action.type, selector: action.selector, status: "ok", durationMs: Date.now() - started };
+
+    case "drag":
+      // Low-level mouse drags hang under Camoufox's virtual display (same as clicks), so dispatch the HTML5 drag events directly.
+      await resolveLocator(page, action.selector, action.frame).waitFor({ state: "visible", timeout });
+      await withTimeout(resolveLocator(page, action.selector, action.frame).evaluate(async (source: HTMLElement, targetSelector: string) => {
+        const root = source.ownerDocument;
+        const target = root.querySelector(targetSelector);
+        if (!target) throw new Error(`Drag target not found: ${targetSelector}`);
+        const transfer = new DataTransfer();
+        const fire = (element: Element, type: string) => element.dispatchEvent(new DragEvent(type, { bubbles: true, cancelable: true, dataTransfer: transfer }));
+        fire(source, "dragstart");
+        fire(target, "dragenter");
+        fire(target, "dragover");
+        fire(target, "drop");
+        fire(source, "dragend");
+      }, action.target), timeout, "Drag action");
       return { index, type: action.type, selector: action.selector, status: "ok", durationMs: Date.now() - started };
 
     case "hover":
@@ -211,6 +231,17 @@ export async function runSequenceAction(
       await (await download).saveAs(target);
       return { index, type: action.type, selector: action.selector, status: "ok", durationMs: Date.now() - started };
     }
+
+    case "dialog":
+      throw new Error("dialog requires a browser session");
+
+    case "expect":
+      return runExpect(page, action, collector, index);
+
+    case "clearDiagnostics":
+      if (!collector) throw new Error("clearDiagnostics requires a browser session");
+      collector.reset();
+      return { index, type: action.type, status: "ok", durationMs: Date.now() - started };
 
     case "evaluate": {
       if (!ALLOW_EVALUATE) {

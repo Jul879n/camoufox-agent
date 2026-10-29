@@ -11,7 +11,8 @@ import type { CaptchaPolicy, SessionRecord, SlotRelease, WaitStrategy } from "./
 import type { SessionActionToolInput, SessionCloseToolInput, SessionNavigateToolInput, SessionResumeToolInput, SessionSnapshotToolInput, SessionStartToolInput } from "./schemas.js";
 import { acquireBrowserSlot, browserContextOptions, buildCamoufoxOptions, closeBrowser, installRequestGuard, launchCamoufoxBrowser, runGuardedPageRead, settleAndAssertSafe, trackBrowser, validateBrowserOptionsInput } from "./browser-runtime.js";
 import { createDiagnosticsCollector } from "./diagnostics.js";
-import { trackNavigationResponses } from "./navigation-response.js";
+import { applyNetworkControl } from "./network-control.js";
+import { wireSessionPage } from "./tabs-tool.js";
 import { navigateWithDocumentUrlCorrection } from "./navigation.js";
 import { buildBrowsePayload, buildSnapshotPayload } from "./extractors.js";
 import { maybeDetectCaptcha } from "./captcha.js";
@@ -270,12 +271,12 @@ export async function handleSessionStart(input: SessionStartToolInput) {
     const harPath = input.recordHar ? path.join(ensureDir(path.join(filesRoot(), "exports")), input.recordHar) : undefined;
     const context = await browser.newContext(browserContextOptions(launchInput, stored?.statePath, harPath));
     const requestGuard = await installRequestGuard(context);
+    const network = await applyNetworkControl(context, launchInput.network);
     const page = await context.newPage();
-    requestGuard.watchPage(page);
 
     const id = `sess_${randomUUID()}`;
     const rawUrls = [getProxyServer(effectiveInput.proxy)].filter((rawUrl): rawUrl is string => Boolean(rawUrl));
-    const secrets = getProxySecrets(effectiveInput.proxy);
+    const secrets = [...getProxySecrets(effectiveInput.proxy), ...(effectiveInput.emulation?.httpCredentials ? [effectiveInput.emulation.httpCredentials.password] : [])];
     const now = Date.now();
     const session: SessionRecord = {
       id,
@@ -283,6 +284,7 @@ export async function handleSessionStart(input: SessionStartToolInput) {
       context,
       page,
       requestGuard,
+      network,
       diagnostics: createDiagnosticsCollector(page, effectiveInput, rawUrls, secrets),
       selectedOS,
       waitStrategy,
@@ -301,9 +303,8 @@ export async function handleSessionStart(input: SessionStartToolInput) {
       closed: false,
     };
 
-    trackNavigationResponses(page, (response) => {
-      session.lastNavigationResponse = response;
-    });
+    wireSessionPage(session, page);
+    context.on("page", (popup) => wireSessionPage(session, popup));
 
     session.rich = await attachCollector(context, () => ({ rawUrls: session.rawUrls, secrets: session.secrets }));
     scheduleExpiry(session);
@@ -424,10 +425,14 @@ export async function handleSessionAction(input: SessionActionToolInput) {
         const gotoStarted = Date.now();
         await navigateSession(currentSession, input.action.url, input.action.waitStrategy, input.action.timeout);
         actionResult = { index: 0, type: "goto", status: "ok" as const, durationMs: Date.now() - gotoStarted };
+      } else if (input.action.type === "dialog") {
+        const dialogStarted = Date.now();
+        currentSession.dialogPolicy = { accept: input.action.accept, promptText: input.action.promptText };
+        actionResult = { index: 0, type: "dialog", status: "ok" as const, durationMs: Date.now() - dialogStarted };
       } else if (isHumanAction(input.action)) {
         actionResult = await runHumanAction(currentSession, input.action);
       } else {
-        actionResult = await runSequenceAction(currentSession.page, input.action, 0, currentSession.rawUrls, currentSession.secrets);
+        actionResult = await runSequenceAction(currentSession.page, input.action, 0, currentSession.rawUrls, currentSession.secrets, currentSession.rich);
       }
       await settleAndAssertSafe(currentSession.page, currentSession.requestGuard);
       const snapshot = await runGuardedPageRead(

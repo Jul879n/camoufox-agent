@@ -9,6 +9,7 @@ import { assertBrowserBinaryAvailable } from "./browser-preflight.js";
 import { probeBrowserBinary } from "./browser-preflight.js";
 import { BROWSER_COMPATIBILITY, EXPECTED_BROWSER_BUILD } from "./browser-build.js";
 import { launchCompatibilityBrowser } from "./browser-compatibility.js";
+import { applyNetworkControl } from "./network-control.js";
 import { trackNavigationResponses } from "./navigation-response.js";
 import { navigateWithDocumentUrlCorrection } from "./navigation.js";
 import type { BrowserInstance, BrowserOperationContext, CamoufoxOptions, CommonBrowserInput, PendingBrowse, RequestGuard, SlotRelease } from "./types.js";
@@ -213,6 +214,7 @@ export async function runBrowserOperation<T>(
       const context = await browser.newContext(browserContextOptions(effectiveInput));
       const requestGuard = await installRequestGuard(context);
       await effectiveInput.setup?.(context);
+      if (effectiveInput.network) await applyNetworkControl(context, effectiveInput.network);
       const page = await context.newPage();
       requestGuard.watchPage(page);
 

@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-29
+
+### Added
+
+- Debug and test apps without Chrome: `browse_audit` (Lighthouse-style scores; axe-core), `browse_network_request`, `browse_session_network` (latency, blocks, mocks, offline), `browse_session_tabs`, `browse_storage`, `browse_profile_app` (leak test, CSS coverage) and `browse_visual_diff`.
+- Sequence actions `expect` (with `soft`), `clearDiagnostics`, `dialog` and `drag`.
+- Flows as tests: steps report `passed|failed|error`, failures save a screenshot and context; `camoufox-agent test <flow…> | --all [--junit file]`.
+- `browse_diagnose`: `budgets`, `tbtApproxMs`, `longFrames`, resource `waterfall`, WebSocket frames and dialogs.
+- `emulation`: `device` presets, `hasTouch`, `forcedColors`, `contrast`, `javaScriptEnabled`, `httpCredentials`; `network` option on every browser tool.
+- Dependency: `axe-core`.
+
+### Fixed
+
+- Popups no longer crash the server (`request.frame()` threw for a popup's first navigation request).
+
 ### Added
 
 - `CAMOUFOX_MCP_ALLOWED_PRIVATE_HOSTS` allows exact development hostnames such as `laravel.test` to resolve to loopback or private addresses. Default restrictions remain enabled, and metadata, link-local, and reserved addresses stay blocked. Status and initialization report the configured hostnames. Fixes #33.

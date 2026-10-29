@@ -18,10 +18,35 @@ export const emulationSchema = z.object({
   timezoneId: z.string().max(100).optional().describe("IANA timezone, e.g. America/Santiago."),
   geolocation: z.object({ latitude: z.number().min(-90).max(90), longitude: z.number().min(-180).max(180) }).optional(),
   offline: z.boolean().optional().describe("Start with the network off (test offline behaviour)."),
+  device: z.enum(["iphone-15", "pixel-8", "ipad", "laptop-720p", "desktop-1080p"]).optional().describe("Viewport, pixel ratio and touch preset. Does not change the user agent (that would break the fingerprint)."),
+  hasTouch: z.boolean().optional().describe("Enable touch events (overrides the device preset)."),
+  forcedColors: z.enum(["active", "none"]).optional(),
+  contrast: z.enum(["more", "no-preference"]).optional(),
+  javaScriptEnabled: z.boolean().optional().describe("false disables JavaScript in the page."),
+  httpCredentials: z.object({ username: z.string().max(200), password: z.string().max(500) }).optional().describe("Basic-auth credentials; the password is redacted from outputs."),
 }).optional().describe("Context emulation for diagnosing how the page behaves under other conditions.");
+
+export const networkControlSchema = z.object({
+  latencyMs: z.number().int().min(0).max(10000).describe("Delay added to every request."),
+  blockUrls: z.array(z.string().max(2000)).max(50).describe("URL globs to abort (e.g. **/analytics/**)."),
+  mocks: z.array(z.object({
+    url: z.string().max(2000).describe("URL glob to answer locally."),
+    method: z.string().max(10).optional(),
+    status: z.number().int().min(100).max(599).optional().default(200),
+    body: z.string().max(200000).optional(),
+    json: z.any().optional().describe("Serialized as the body with content-type application/json."),
+    contentType: z.string().max(200).optional(),
+    headers: z.record(z.string(), z.string()).optional(),
+    delayMs: z.number().int().min(0).max(30000).optional(),
+    abort: z.boolean().optional().describe("Fail the request instead of answering it."),
+  })).max(20),
+  extraHeaders: z.record(z.string(), z.string()),
+  offline: z.boolean(),
+}).partial().describe("Network control: latency, blocked URLs, mocked responses, extra headers, offline. Replaces the previous control on sessions.");
 
 export const commonBrowserOptionShape = {
   emulation: emulationSchema,
+  network: networkControlSchema.optional(),
   os: z.enum(["windows", "macos", "linux"]).optional().describe("Optional OS to spoof. Can be 'windows', 'macos', or 'linux'. If not specified, will rotate between all OS types."),
   waitStrategy: z.enum(["domcontentloaded", "load", "networkidle"]).optional().default(DEFAULT_WAIT_STRATEGY).describe("Wait strategy for page load. Defaults to 'domcontentloaded'. 'load' waits for all resources, 'networkidle' waits for network activity to finish."),
   timeout: z.number().min(5000).max(300000).optional().default(60000).describe("Timeout in milliseconds for page load (5-300 seconds)."),
@@ -80,6 +105,13 @@ export const sequenceActionSchema = z.discriminatedUnion("type", [
     frame: frameSchema,
     clickMode: z.enum(["dom", "pointer", "auto"]).optional().default("dom")
       .describe("Click implementation. 'dom' uses DOM activation for CI stability. 'pointer' uses Playwright pointer input. 'auto' tries pointer first and falls back to DOM activation."),
+    timeout: actionTimeoutSchema,
+  }),
+  z.object({
+    type: z.literal("drag"),
+    selector: z.string().max(2000).describe("Element to drag."),
+    target: z.string().max(2000).describe("Element to drop onto."),
+    frame: frameSchema,
     timeout: actionTimeoutSchema,
   }),
   z.object({
@@ -172,6 +204,23 @@ export const sequenceActionSchema = z.discriminatedUnion("type", [
     frame: frameSchema,
     label: z.string().min(1).max(200).describe("What code is needed (e.g. 'SMS code')."),
     timeout: humanTimeoutSchema,
+  }),
+  z.object({
+    type: z.literal("expect"),
+    check: z.enum(["visible", "hidden", "text", "textContains", "value", "attribute", "count", "enabled", "disabled", "checked", "url", "urlContains", "title", "titleContains", "noConsoleErrors", "noFailedRequests", "noHttpErrors"]),
+    selector: z.string().max(2000).optional(),
+    frame: frameSchema,
+    attribute: z.string().max(100).optional(),
+    equals: z.union([z.string(), z.number()]).optional(),
+    soft: z.boolean().optional().default(false).describe("Record the failure and continue instead of throwing."),
+    timeout: actionTimeoutSchema.describe("Retry window in ms (default 5000)."),
+  }),
+  z.object({ type: z.literal("clearDiagnostics"), timeout: actionTimeoutSchema }),
+  z.object({
+    type: z.literal("dialog"),
+    accept: z.boolean().describe("How to answer alert/confirm/prompt dialogs from now on (default policy: dismiss)."),
+    promptText: z.string().max(1000).optional(),
+    timeout: actionTimeoutSchema,
   }),
   z.object({
     type: z.literal("evaluate"),
@@ -376,9 +425,25 @@ export const diagnoseToolShape = {
   settleMs: z.number().int().min(0).max(30000).optional().default(1500).describe("Extra time after load for vitals and late requests."),
   reload: z.boolean().optional().default(false).describe("Sessions only: clear collected data and reload the page first for a clean measurement."),
   maxEntries: z.number().int().min(1).max(1000).optional().default(100).describe("Max console/network entries returned per list."),
+  budgets: z.object({
+    maxLoadMs: z.number().int().min(0), maxFcpMs: z.number().int().min(0), maxLcpMs: z.number().int().min(0), maxTtfbMs: z.number().int().min(0),
+    maxTbtMs: z.number().int().min(0), maxDomNodes: z.number().int().min(0), maxRequests: z.number().int().min(0), maxTotalBytes: z.number().int().min(0),
+    maxConsoleErrors: z.number().int().min(0), maxFailedRequests: z.number().int().min(0),
+  }).partial().optional().describe("Performance budgets; the report gains budgets.passed and per-metric results. Metrics from omitted sections enable that section."),
   saveAs: z.string().regex(/^[A-Za-z0-9._-]+\.json$/).optional().describe("Also save the full report to CAMOUFOX_MCP_FILES_DIR/exports/<saveAs>."),
 };
 export type DiagnoseToolInput = WithWindowSize<z.infer<z.ZodObject<typeof diagnoseToolShape>>>;
+
+export const auditToolShape = {
+  ...commonBrowserToolShape,
+  url: z.string().optional().describe("URL to audit (one-shot). Provide exactly one of url or sessionId."),
+  sessionId: z.string().min(1).max(200).optional().describe("Existing session, audited at its current page."),
+  categories: z.array(z.enum(["performance", "accessibility", "best-practices", "seo", "security"])).min(1).optional().describe("Defaults to all five."),
+  formFactor: z.enum(["mobile", "desktop"]).optional().default("desktop").describe("mobile uses the pixel-8 viewport/touch preset and Lighthouse's mobile control points."),
+  settleMs: z.number().int().min(0).max(30000).optional().default(1500),
+  saveAs: z.string().regex(/^[A-Za-z0-9._-]+\.(json|html)$/).optional().describe("Save the report under exports/. .html gives a self-contained page."),
+};
+export type AuditToolInput = WithWindowSize<z.infer<z.ZodObject<typeof auditToolShape>>>;
 
 export const inspectToolShape = {
   ...commonBrowserToolShape,
@@ -397,3 +462,51 @@ export const sessionTraceToolShape = {
   saveAs: z.string().regex(/^[A-Za-z0-9._-]+\.zip$/).optional().describe("Required on stop. View with `npx playwright show-trace`."),
 };
 export type SessionTraceToolInput = z.infer<z.ZodObject<typeof sessionTraceToolShape>>;
+
+export const sessionTabsToolShape = {
+  ...sessionIdShape,
+  action: z.enum(["list", "new", "select", "close"]),
+  index: z.number().int().min(0).optional().describe("Tab index for select/close."),
+  url: z.string().max(4000).optional().describe("URL to open for action=new."),
+};
+export type SessionTabsToolInput = z.infer<z.ZodObject<typeof sessionTabsToolShape>>;
+
+export const sessionNetworkToolShape = {
+  ...sessionIdShape,
+  network: networkControlSchema.describe("New network control. Send {} to clear it."),
+};
+export type SessionNetworkToolInput = z.infer<z.ZodObject<typeof sessionNetworkToolShape>>;
+
+export const networkRequestToolShape = {
+  ...sessionIdShape,
+  id: z.number().int().min(1).describe("Request id from browse_diagnose network.entries."),
+  includeBody: z.boolean().optional().default(true),
+  maxBodyBytes: z.number().int().min(1).max(1000000).optional().default(100000),
+};
+export type NetworkRequestToolInput = z.infer<z.ZodObject<typeof networkRequestToolShape>>;
+
+export const storageToolShape = {
+  ...sessionIdShape,
+  kinds: z.array(z.enum(["cookies", "localStorage", "sessionStorage", "indexedDB", "serviceWorkers"])).min(1).optional().describe("Defaults to all kinds."),
+  includeValues: z.boolean().optional().default(false).describe("Include values (truncated to 200 chars). Hidden by default so tokens do not reach the model."),
+};
+export type StorageToolInput = z.infer<z.ZodObject<typeof storageToolShape>>;
+
+export const profileAppToolShape = {
+  ...sessionIdShape,
+  mode: z.enum(["leaks", "cssCoverage"]).describe("leaks: repeat actions and measure DOM nodes, event listeners and timers growth. cssCoverage: report CSS rules that never matched an element."),
+  actions: z.array(sequenceActionSchema).max(20).optional().describe("Actions run on every iteration (e.g. open and close a modal)."),
+  iterations: z.number().int().min(2).max(50).optional().default(5),
+};
+export type ProfileAppToolInput = z.infer<z.ZodObject<typeof profileAppToolShape>>;
+
+export const visualDiffToolShape = {
+  ...sessionIdShape,
+  name: z.string().regex(/^[a-z0-9-]{1,60}$/).describe("Baseline name (stored under the agent home, reused across runs)."),
+  selector: z.string().max(2000).optional().describe("Capture only this element."),
+  fullPage: z.boolean().optional().default(true),
+  threshold: z.number().min(0).max(1).optional().default(0.1).describe("Per-pixel colour distance (0-1) above which a pixel counts as different."),
+  maxDiffPct: z.number().min(0).max(100).optional().default(0.5).describe("Fail when more than this percentage of pixels differ."),
+  update: z.boolean().optional().default(false).describe("Overwrite the baseline with the current capture."),
+};
+export type VisualDiffToolInput = z.infer<z.ZodObject<typeof visualDiffToolShape>>;

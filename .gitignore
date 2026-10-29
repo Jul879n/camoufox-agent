@@ -149,6 +149,7 @@ data-files/
 TODO.md
 publish_docker.sh
 repomix-output.xml
-.zcode.e2e-home/
+.zcode
+.e2e-home/
 tests/fixtures/files/exports/
 data/

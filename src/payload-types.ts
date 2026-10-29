@@ -149,7 +149,10 @@ export interface SequenceActionResult {
   index: number;
   type: string;
   selector?: string;
-  status: "ok" | "paused";
+  status: "ok" | "paused" | "failed";
+  message?: string;
+  expected?: string;
+  actual?: string;
   reason?: string;
   label?: string;
   result?: string;

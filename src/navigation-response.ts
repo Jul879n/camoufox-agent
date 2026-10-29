@@ -8,7 +8,12 @@ export function trackNavigationResponses(
   let current: Response | null = null;
   page.on("response", (response) => {
     const request = response.request();
-    if (request.isNavigationRequest() && request.frame() === page.mainFrame()) pending = response;
+    // A popup's first navigation request is issued before its frame exists; frame() throws then.
+    try {
+      if (request.isNavigationRequest() && request.frame() === page.mainFrame()) pending = response;
+    } catch {
+      if (request.isNavigationRequest()) pending = response;
+    }
   });
   page.on("requestfailed", (request) => {
     if (pending?.request() === request) pending = null;

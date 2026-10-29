@@ -9,6 +9,7 @@ const USAGE = `Usage: camoufox-agent [command]
   (none)                      MCP server over stdio
   serve [--host H] [--port P] HTTP server: REST, MCP over HTTP, live view, cron
   run <flow>                  Run a saved flow once and print its JSON result
+  test <flow...> | --all      Run flows as tests [--junit <file>]; exit 1 if any fails
   secret set <name>           Store a secret (value read from stdin, no echo)
   secret list                 List secret names
   fetch                       Download the pinned Camoufox browser
@@ -78,6 +79,29 @@ async function main(): Promise<void> {
       console.log(JSON.stringify(run, null, 2));
       await closeActiveBrowsers();
       process.exit(run.ok ? 0 : 1);
+      return;
+    }
+    case "test": {
+      const all = args.includes("--all");
+      const junitFile = flag(args, "--junit");
+      await import("./sqlite-compat.js");
+      const { runFlow, listFlowNames } = await import("./flows.js");
+      const { toJunit } = await import("./junit.js");
+      const { closeActiveBrowsers } = await import("./browser-runtime.js");
+      const skip = new Set(junitFile ? ["--junit", junitFile] : []);
+      const names = all ? listFlowNames() : args.filter((arg) => !arg.startsWith("--") && !skip.has(arg));
+      if (names.length === 0) { console.error(USAGE); process.exit(2); }
+      const runs = [];
+      for (const name of names) {
+        const run = await runFlow(name, { trigger: "cli" });
+        runs.push(run);
+        const failed = run.steps.filter((step) => step.status !== "passed").length;
+        console.error(`${run.ok ? "✓" : "✗"} ${name} (${run.durationMs}ms) ${run.steps.length} steps, ${failed} failed`);
+      }
+      console.log(JSON.stringify(runs, null, 2));
+      if (junitFile) (await import("node:fs")).writeFileSync(junitFile, toJunit(runs));
+      await closeActiveBrowsers();
+      process.exit(runs.every((run) => run.ok) ? 0 : 1);
       return;
     }
     case "secret": {

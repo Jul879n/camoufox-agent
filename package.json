@@ -1,6 +1,6 @@
 {
     "name": "camoufox-agent",
-    "version": "0.2.0",
+    "version": "0.3.0",
     "description": "Fork of camoufox-mcp: Camoufox browser automation for agents (MCP stdio + HTTP/REST server, persistent profiles, flows, cron, live view)",
     "keywords": [
         "mcp",
@@ -52,7 +52,7 @@
         "fetch:camoufox": "node scripts/fetch-browser.mjs",
         "doctor": "node scripts/doctor.mjs",
         "test": "npm run test:local",
-        "test:unit": "npm run build && node tests/unit_policy.mjs && node tests/unit_private_host_errors.mjs && node tests/unit_navigation.mjs && node tests/unit_sequence.mjs && node tests/unit_snapshot.mjs && node tests/unit_sqlite_shim.mjs && node tests/unit_browser_preflight.mjs && node tests/unit_browser_compatibility.mjs && node tests/unit_browser_fetch.mjs && node tests/unit_files.mjs && node tests/unit_sessions_ttl.mjs && node tests/unit_profiles.mjs && node tests/unit_secrets.mjs && node tests/unit_csv.mjs && node tests/unit_flows.mjs && node tests/unit_scheduler.mjs && node tests/unit_diagnose.mjs",
+        "test:unit": "npm run build && node tests/unit_policy.mjs && node tests/unit_private_host_errors.mjs && node tests/unit_navigation.mjs && node tests/unit_sequence.mjs && node tests/unit_snapshot.mjs && node tests/unit_sqlite_shim.mjs && node tests/unit_browser_preflight.mjs && node tests/unit_browser_compatibility.mjs && node tests/unit_browser_fetch.mjs && node tests/unit_files.mjs && node tests/unit_sessions_ttl.mjs && node tests/unit_profiles.mjs && node tests/unit_secrets.mjs && node tests/unit_csv.mjs && node tests/unit_flows.mjs && node tests/unit_scheduler.mjs && node tests/unit_diagnose.mjs && node tests/unit_junit.mjs && node tests/unit_budgets.mjs && node tests/unit_devices.mjs && node tests/unit_scoring.mjs",
         "test:local": "npm run build && PYTHONDONTWRITEBYTECODE=1 python3 tests/test_client.py --mode local",
         "test:camoufox": "npm run fetch:camoufox && npm run test:local",
         "test:docker": "./tests/run_tests.sh",
@@ -61,6 +61,7 @@
     },
     "dependencies": {
         "@modelcontextprotocol/sdk": "^1.29.0",
+        "axe-core": "^4.14.0",
         "camoufox-js": "0.12.0",
         "chalk": "^5.6.2",
         "croner": "^11.0.0",

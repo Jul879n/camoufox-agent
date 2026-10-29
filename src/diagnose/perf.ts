@@ -1,4 +1,5 @@
 import type { Page } from "playwright-core";
+import { redactUrl } from "../utils.js";
 
 // Runs inside the page: navigation timing, paint, vitals gathered by VITALS_SCRIPT and DOM statistics.
 const READ_PERF = `(() => {
@@ -11,7 +12,16 @@ const READ_PERF = `(() => {
   const depthOf = (el) => { let d = 0; while (el.parentElement) { d++; el = el.parentElement; } return d; };
   while (walker.nextNode()) { nodes++; if (nodes % 25 === 0) maxDepth = Math.max(maxDepth, depthOf(walker.currentNode)); }
   const round = (n) => (typeof n === "number" ? Math.round(n) : null);
+  const fcp = fcpEntry ? fcpEntry.startTime : 0;
+  const frames = (cfx.jank || []).filter((j) => j.start >= fcp);
+  const waterfall = performance.getEntriesByType("resource").map((e) => ({
+    name: e.name, type: e.initiatorType, startMs: round(e.startTime), durationMs: round(e.duration),
+    transferSize: e.transferSize, renderBlocking: e.renderBlockingStatus === "blocking",
+  })).sort((a, b) => a.startMs - b.startMs);
   return {
+    tbtApproxMs: frames.reduce((a, j) => a + (j.duration - 50), 0),
+    longFrames: { count: frames.length, top: frames.slice().sort((a, b) => b.duration - a.duration).slice(0, 5) },
+    waterfall,
     navigation: nav ? {
       type: nav.type, protocol: nav.nextHopProtocol,
       dnsMs: round(nav.domainLookupEnd - nav.domainLookupStart), connectMs: round(nav.connectEnd - nav.connectStart),
@@ -37,6 +47,18 @@ const READ_PERF = `(() => {
   };
 })()`;
 
-export async function readPerf(page: Page): Promise<unknown> {
-  return page.evaluate(READ_PERF);
+export interface PerfReport {
+  navigation: { loadMs: number | null; ttfbMs: number | null } | null;
+  vitals: { fcpMs: number | null; lcp: { timeMs: number } | null; longTasks: unknown };
+  dom: { nodes: number };
+  tbtApproxMs: number;
+  longFrames: { count: number; top: Array<{ start: number; duration: number }> };
+  waterfall: Array<Record<string, unknown> & { name: string }>;
+}
+
+export async function readPerf(page: Page, maxEntries = 50): Promise<PerfReport> {
+  const perf = await page.evaluate(READ_PERF) as PerfReport;
+  perf.waterfall = perf.waterfall.slice(0, maxEntries).map((entry) => ({ ...entry, name: redactUrl(entry.name) }));
+  if (perf.vitals.longTasks === null) perf.vitals.longTasks = { approximation: "tbtApproxMs/longFrames (animation-frame gaps > 50 ms)" };
+  return perf;
 }
