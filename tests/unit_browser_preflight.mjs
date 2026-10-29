@@ -24,8 +24,8 @@ try {
     () => assertBrowserBinaryAvailable(() => { throw new Error("Missing executable"); }),
     (error) => {
       assert.match(error.message, /npm run fetch:camoufox/, "error should name the pinned fetch command");
-      assert.match(error.message, /camoufox-mcp-fetch.*global install/, "global installs need a command on PATH");
-      assert.match(error.message, /npm exec --yes --package=camoufox-mcp-server@[^ ]+ -- camoufox-mcp-fetch/, "npx installs need a public command pinned to this server version");
+      assert.match(error.message, /camoufox-agent-fetch.*global install/, "global installs need a command on PATH");
+      assert.match(error.message, /npm exec --yes --package=camoufox-agent@[^ ]+ -- camoufox-agent-fetch/, "npx installs need a public command pinned to this server version");
       assert.doesNotMatch(error.message, /node node_modules\//, "npx and global installs do not live under the user's working directory");
       assert.equal(error.message, MISSING_BROWSER_MESSAGE);
       return true;
@@ -131,16 +131,16 @@ try {
   const extracted = spawnSync("tar", ["-xzf", archive, "-C", hoistedModules], { encoding: "utf8", timeout: 5000 });
   assert.equal(extracted.error, undefined, extracted.error?.message);
   assert.equal(extracted.status, 0, extracted.stderr);
-  const installedRoot = join(hoistedModules, "camoufox-mcp-server");
+  const installedRoot = join(hoistedModules, "camoufox-agent");
   renameSync(join(hoistedModules, "package"), installedRoot);
   assert.equal(existsSync(join(installedRoot, "node_modules")), false, "fixture must exercise dependencies outside the package");
 
   const builds = JSON.parse(readFileSync(join(installedRoot, "browser-builds.json"), "utf8"));
   const installedManifest = JSON.parse(readFileSync(join(installedRoot, "package.json"), "utf8"));
   const expectedBins = {
-    "camoufox-mcp-server": "dist/index.js",
-    "camoufox-mcp-fetch": "scripts/fetch-browser.mjs",
-    "camoufox-mcp-doctor": "scripts/doctor.mjs",
+    "camoufox-agent": "dist/cli.js",
+    "camoufox-agent-fetch": "scripts/fetch-browser.mjs",
+    "camoufox-agent-doctor": "scripts/doctor.mjs",
   };
   assert.deepEqual(installedManifest.bin, expectedBins, "all supported install paths must expose the bootstrap commands");
   const binDir = join(hoistedModules, ".bin");
@@ -148,7 +148,7 @@ try {
   for (const [name, path] of Object.entries(expectedBins)) {
     assert.equal(existsSync(join(installedRoot, path)), true, `${name} must ship its entry file`);
     assert.match(readFileSync(join(installedRoot, path), "utf8"), /^#!\/usr\/bin\/env node\n/, `${name} needs a Node shebang`);
-    if (name !== "camoufox-mcp-server") {
+    if (name !== "camoufox-agent") {
       const packedFile = packedInfo.files.find((file) => file.path === path);
       assert.ok(packedFile.mode & 0o111, `${name} must ship executable permissions`);
     }
@@ -180,7 +180,7 @@ try {
     export const OS_NAME = ${JSON.stringify(OS_NAME)};
   `);
   for (const compatibility of [false, true]) {
-    const packedFetch = spawnSync(process.execPath, [join(binDir, "camoufox-mcp-fetch")], {
+    const packedFetch = spawnSync(process.execPath, [join(binDir, "camoufox-agent-fetch")], {
       cwd: temporaryRoot,
       env: { ...process.env, CAMOUFOX_INSTALL_DIR: missingCache, CAMOUFOX_MCP_BROWSER_COMPATIBILITY: compatibility ? "1" : "0", PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1" },
       encoding: "utf8",
@@ -191,7 +191,7 @@ try {
     assert.match(packedFetch.stdout, /Skipping browser download/, "the npm symlink must execute the public fetch entry point");
     assert.equal(existsSync(missingCache), false, "skip-download bootstrap must not create a cache");
   }
-  const runPackedDoctor = (compatibility) => spawnSync(process.execPath, [join(binDir, "camoufox-mcp-doctor")], {
+  const runPackedDoctor = (compatibility) => spawnSync(process.execPath, [join(binDir, "camoufox-agent-doctor")], {
     cwd: temporaryRoot,
     env: { ...process.env, CAMOUFOX_INSTALL_DIR: missingCache, CAMOUFOX_MCP_BROWSER_COMPATIBILITY: compatibility ? "1" : "0" },
     encoding: "utf8",

@@ -5,6 +5,11 @@ import type { SequenceAction } from "./schemas.js";
 import type { ClickMode, RequestGuard, SequenceActionResult } from "./types.js";
 import { describeError, serializeBounded, withTimeout } from "./utils.js";
 import { settleAndAssertSafe } from "./browser-runtime.js";
+import fs from "node:fs";
+import path from "node:path";
+import { validateTargetUrl } from "./policy.js";
+import { getSecret } from "./secrets.js";
+import { filesRoot, insideRoot } from "./files.js";
 
 export function actionTimeout(action: { timeout?: number }): number {
   return action.timeout ?? DEFAULT_ACTION_TIMEOUT_MS;
@@ -97,6 +102,24 @@ export async function runSequenceAction(
       await resolveLocator(page, action.selector, action.frame).fill(action.value, { timeout });
       return { index, type: action.type, selector: action.selector, status: "ok", durationMs: Date.now() - started };
 
+    case "waitForHuman":
+    case "promptCode":
+      throw new Error(`Action ${action.type} requires a browser session (browse_session_action).`);
+
+    case "goto": {
+      const target = await validateTargetUrl(action.url);
+      rawUrls.push(action.url);
+      await page.goto(target.toString(), { waitUntil: action.waitStrategy ?? "domcontentloaded", timeout: action.timeout ?? DEFAULT_ACTION_TIMEOUT_MS * 6 });
+      return { index, type: action.type, status: "ok", durationMs: Date.now() - started };
+    }
+
+    case "fillSecret": {
+      const value = getSecret(action.secret);
+      secrets.push(value);
+      await resolveLocator(page, action.selector, action.frame).fill(value, { timeout });
+      return { index, type: action.type, selector: action.selector, status: "ok", result: `secret: ${action.secret}`, durationMs: Date.now() - started };
+    }
+
     case "type":
       await resolveLocator(page, action.selector, action.frame).pressSequentially(action.text, {
         delay: action.delay,
@@ -162,6 +185,32 @@ export async function runSequenceAction(
         await page.mouse.wheel(action.deltaX, action.deltaY);
       }
       return { index, type: action.type, selector: action.selector, status: "ok", durationMs: Date.now() - started };
+
+    case "upload": {
+      const root = filesRoot();
+      const files = action.files.map((file) => insideRoot(root, file));
+      const locator = resolveLocator(page, action.selector, action.frame);
+      const isFileInput = await locator.evaluate((el) => el instanceof HTMLInputElement && el.type === "file", undefined, { timeout });
+      if (isFileInput) {
+        await locator.setInputFiles(files, { timeout });
+      } else {
+        const chooser = page.waitForEvent("filechooser", { timeout });
+        await locator.click({ timeout });
+        await (await chooser).setFiles(files);
+      }
+      return { index, type: action.type, selector: action.selector, status: "ok", durationMs: Date.now() - started };
+    }
+
+    case "download": {
+      const dir = path.join(filesRoot(), "descargas");
+      fs.mkdirSync(dir, { recursive: true });
+      const target = path.join(dir, action.filename);
+      if (fs.existsSync(target)) throw new Error(`File already exists: descargas/${action.filename}`);
+      const download = page.waitForEvent("download", { timeout });
+      await resolveLocator(page, action.selector, action.frame).click({ timeout });
+      await (await download).saveAs(target);
+      return { index, type: action.type, selector: action.selector, status: "ok", durationMs: Date.now() - started };
+    }
 
     case "evaluate": {
       if (!ALLOW_EVALUATE) {

@@ -1,0 +1,11 @@
+{
+  "profile": "herokuapp",
+  "startUrl": "http://localhost/login",
+  "actions": [
+    { "type": "fill", "selector": "#username", "value": "tomsmith" },
+    { "type": "fillSecret", "selector": "#password", "secret": "heroku-pass" },
+    { "type": "click", "selector": "button[type=submit]" },
+    { "type": "waitFor", "selector": "h2" }
+  ],
+  "extract": { "itemSelector": "h2", "fields": { "title": {} } }
+}

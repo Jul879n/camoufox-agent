@@ -147,9 +147,9 @@ function smokeTest() {
   return new Promise((resolve) => {
     let dist;
     try {
-      dist = req("package.json").bin["camoufox-mcp-server"];
+      dist = req("package.json").bin["camoufox-agent"];
     } catch {
-      dist = "dist/index.js";
+      dist = "dist/cli.js";
     }
     const distPath = join(ROOT, dist);
     try {
@@ -174,9 +174,9 @@ function smokeTest() {
       settled = true;
       clearTimeout(timer);
       if (statusOk) ok("camoufox_status.browserAvailable = true");
-      else fail("camoufox_status did not report browserAvailable=true", "check `npm run fetch:camoufox` and server logs (`node dist/index.js`)");
+      else fail("camoufox_status did not report browserAvailable=true", "check `npm run fetch:camoufox` and server logs (`node dist/cli.js`)");
       if (browseOk) ok("browse https://example.com returned (metadata)");
-      else fail("browse smoke test did not return a non-error result", "run `node dist/index.js` and inspect stderr");
+      else fail("browse smoke test did not return a non-error result", "run `node dist/cli.js` and inspect stderr");
       try { p.kill(); } catch {}
       resolve();
     };

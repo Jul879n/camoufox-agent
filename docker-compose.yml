@@ -1,0 +1,20 @@
+services:
+  camoufox-agent:
+    build: .
+    init: true # xvfb-run necesita un PID 1 que reciba SIGUSR1 de Xvfb
+    # El ENTRYPOINT del Dockerfile ya ejecuta `xvfb-run node dist/cli.js`. Host y puerto van por
+    # variables porque xvfb-run (getopt) interpreta los flags `--host`/`--port` como propios.
+    command: ["serve"]
+    environment:
+      CAMOUFOX_AGENT_HOST: 0.0.0.0
+      CAMOUFOX_AGENT_PORT: "9420"
+      CAMOUFOX_AGENT_HOME: /data
+      CAMOUFOX_AGENT_TOKEN: ${CAMOUFOX_AGENT_TOKEN:?set CAMOUFOX_AGENT_TOKEN}
+      CAMOUFOX_AGENT_CORS_ORIGINS: ${CAMOUFOX_AGENT_CORS_ORIGINS:-}
+      TZ: ${TZ:-America/Santiago}
+    volumes:
+      - ./data:/data
+    ports:
+      - "127.0.0.1:9420:9420"
+    shm_size: "1gb"
+    restart: unless-stopped

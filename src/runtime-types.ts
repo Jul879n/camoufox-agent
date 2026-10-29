@@ -37,8 +37,10 @@ export interface SessionRecord {
   rawUrls: string[];
   secrets: string[];
   createdAt: number;
-  expiresAt: number;
-  timer: ReturnType<typeof setTimeout>;
+  profile?: string;
+  lastProfileSaveAt?: number;
+  expiresAt: number | null;
+  timer?: ReturnType<typeof setTimeout>;
   lastNavigationResponse: Response | null;
   op: Promise<void>;
   closing: boolean;
@@ -63,6 +65,8 @@ export interface CamoufoxOptions {
   exclude_addons?: string[];
   window?: WindowSize;
   args?: string[];
+  fingerprint?: Record<string, unknown>;
+  i_know_what_im_doing?: boolean;
 }
 
 export interface BrowserLaunchInput {

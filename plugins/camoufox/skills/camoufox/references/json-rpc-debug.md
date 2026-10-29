@@ -10,7 +10,7 @@ This uses the installable package and keeps unsafe browser options disabled.
 node << 'NODESCRIPT'
 const { spawn } = require('child_process');
 
-const p = spawn('npx', ['-y', 'camoufox-mcp-server@latest'], {
+const p = spawn('npx', ['-y', 'camoufox-agent'], {
   stdio: ['pipe', 'pipe', 'pipe'],
   env: { ...process.env }
 });

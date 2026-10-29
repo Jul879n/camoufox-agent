@@ -30,7 +30,7 @@ writeFileSync(preload, `
 const client = new Client({ name: "private-host-errors-test", version: "1.0.0" });
 const transport = new StdioClientTransport({
   command: process.execPath,
-  args: ["--import", preload, fileURLToPath(new URL("../dist/index.js", import.meta.url))],
+  args: ["--import", preload, fileURLToPath(new URL("../dist/cli.js", import.meta.url))],
   stderr: "pipe",
   env: {
     ...process.env,

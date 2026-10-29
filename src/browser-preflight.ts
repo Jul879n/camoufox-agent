@@ -4,7 +4,7 @@ import { OS_NAME } from "camoufox-js/dist/pkgman.js";
 import { BROWSER_INSTALL_DIR, EXPECTED_BROWSER_VERSION } from "./browser-build.js";
 import { SERVER_VERSION } from "./config.js";
 
-const FETCH_GUIDANCE = `Run the pinned fetch command with the same environment as the server: \`npm run fetch:camoufox\` (repo checkout), \`camoufox-mcp-fetch\` (global install), or \`npm exec --yes --package=camoufox-mcp-server@${SERVER_VERSION} -- camoufox-mcp-fetch\` (npx/package install).`;
+const FETCH_GUIDANCE = `Run the pinned fetch command with the same environment as the server: \`npm run fetch:camoufox\` (repo checkout), \`camoufox-agent-fetch\` (global install), or \`npm exec --yes --package=camoufox-agent@${SERVER_VERSION} -- camoufox-agent-fetch\` (npx/package install).`;
 
 export const MISSING_BROWSER_MESSAGE =
   `Camoufox browser binary not installed or incomplete. ${FETCH_GUIDANCE} Then retry. Do NOT use \`npx camoufox-js fetch\`: it can install a build that breaks this server's private-WebSocket SSRF guard.`;

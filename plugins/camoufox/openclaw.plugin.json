@@ -1,8 +1,8 @@
 {
-  "id": "camoufox-mcp",
-  "name": "Camoufox MCP",
-  "description": "Bundles Camoufox MCP browser automation skill and MCP server config.",
-  "version": "2.6.0",
+  "id": "camoufox-agent",
+  "name": "Camoufox Agent",
+  "description": "Bundles Camoufox Agent browser automation skill and MCP server config.",
+  "version": "0.1.0",
   "skills": [
     "./skills"
   ],

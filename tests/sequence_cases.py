@@ -134,15 +134,9 @@ class SequenceCases:
         print("--- Running Test: Call Tool - Browse Sequence Rejects Timeout Budget ---")
         response = self._call_tool("browse_sequence", {
             "url": "https://example.com",
-            # 5 x 60000 = 300000ms, above the 250000ms default budget
+            # 20 x 60000 = 1200000ms, above the 1000000ms default budget
             # (CAMOUFOX_MCP_SEQUENCE_TIMEOUT_MS) with the max per-action timeout.
-            "actions": [
-                {"type": "waitFor", "timeout": 60000},
-                {"type": "waitFor", "timeout": 60000},
-                {"type": "waitFor", "timeout": 60000},
-                {"type": "waitFor", "timeout": 60000},
-                {"type": "waitFor", "timeout": 60000}
-            ]
+            "actions": [{"type": "waitFor", "timeout": 60000} for _ in range(20)]
         }, timeout=10)
         assert response and response.get("result", {}).get("isError"), response
         assert "Sequence timeout budget exceeds server policy" in self.get_tool_text(response), response

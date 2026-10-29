@@ -9,6 +9,7 @@ import {
   MAX_SEQUENCE_ACTIONS,
 } from "../config.js";
 import type { WindowSize } from "../types.js";
+import { PROFILE_NAME } from "../profiles.js";
 import { captchaPolicySchema, screenshotOptionsSchema, stealthProfileSchema, viewportSchema, windowSchema, proxySchema } from "./primitives.js";
 
 export const commonBrowserOptionShape = {
@@ -59,6 +60,7 @@ export const snapshotToolShape = {
 };
 
 export const actionTimeoutSchema = z.number().min(100).max(60000).optional();
+export const humanTimeoutSchema = z.number().min(1000).max(3600000).optional().describe("Max ms to wait for a human (default 600000).");
 export const frameSchema = z.string().max(2000).optional()
   .describe("CSS selector of an iframe. The action's selector is resolved inside this iframe.");
 
@@ -121,6 +123,46 @@ export const sequenceActionSchema = z.discriminatedUnion("type", [
     deltaX: z.number().min(-10000).max(10000).optional().default(0),
     deltaY: z.number().min(-10000).max(10000).optional().default(600),
     timeout: actionTimeoutSchema,
+  }),
+  z.object({
+    type: z.literal("upload"),
+    selector: z.string().max(2000).describe("File input, or element that opens the native file chooser when clicked."),
+    frame: frameSchema,
+    files: z.array(z.string().max(1000)).min(1).max(10).describe("Absolute paths inside CAMOUFOX_MCP_FILES_DIR."),
+    timeout: actionTimeoutSchema,
+  }),
+  z.object({
+    type: z.literal("download"),
+    selector: z.string().max(2000).describe("Element that triggers a download when clicked."),
+    frame: frameSchema,
+    filename: z.string().min(1).max(200).regex(/^[A-Za-z0-9._-]+$/).describe("File name saved under CAMOUFOX_MCP_FILES_DIR/descargas."),
+    timeout: actionTimeoutSchema,
+  }),
+  z.object({
+    type: z.literal("fillSecret"),
+    selector: z.string().max(2000),
+    frame: frameSchema,
+    secret: z.string().regex(/^[a-z0-9][a-z0-9_-]{0,63}$/).describe("Name of a stored secret (CAMOUFOX_SECRET_<NAME> or secrets.json). The value is never returned."),
+    timeout: actionTimeoutSchema,
+  }),
+  z.object({
+    type: z.literal("goto"),
+    url: z.string().describe("Fully qualified http or https URL. Subject to the same URL policy as the initial navigation."),
+    waitStrategy: z.enum(["domcontentloaded", "load", "networkidle"]).optional(),
+    timeout: z.number().min(5000).max(300000).optional(),
+  }),
+  z.object({
+    type: z.literal("waitForHuman"),
+    reason: z.string().min(1).max(500).describe("What the human must do (solve a captcha, approve a login...)."),
+    until: z.string().max(2000).optional().describe("CSS selector that, once visible, continues without waiting for the human to press Done."),
+    timeout: humanTimeoutSchema,
+  }),
+  z.object({
+    type: z.literal("promptCode"),
+    selector: z.string().max(2000),
+    frame: frameSchema,
+    label: z.string().min(1).max(200).describe("What code is needed (e.g. 'SMS code')."),
+    timeout: humanTimeoutSchema,
   }),
   z.object({
     type: z.literal("evaluate"),
@@ -198,6 +240,7 @@ export const networkSummaryToolShape = {
 
 export const sessionStartToolShape = {
   ...commonBrowserOptionShape,
+  profile: z.string().regex(PROFILE_NAME).optional().describe("Named persistent profile (cookies, localStorage, IndexedDB). Keeps logins between sessions; its os/locale/proxy/window/fingerprint override the input."),
 };
 
 export const sessionIdShape = {
@@ -260,3 +303,55 @@ export type SessionActionToolInput = z.infer<z.ZodObject<typeof sessionActionToo
 export type SessionSnapshotToolInput = z.infer<z.ZodObject<typeof sessionSnapshotToolShape>>;
 export type SessionResumeToolInput = z.infer<z.ZodObject<typeof sessionResumeToolShape>>;
 export type SessionCloseToolInput = z.infer<z.ZodObject<typeof sessionCloseToolShape>>;
+
+export const profilesListToolShape = {};
+export const profileDeleteToolShape = {
+  name: z.string().regex(PROFILE_NAME).describe("Profile name to delete (must not be in use)."),
+};
+
+export const extractFieldSchema = z.object({
+  selector: z.string().max(2000).optional().describe("CSS selector relative to the item. Omit to use the item itself."),
+  attr: z.string().max(100).optional().describe("Attribute to read. href/src return absolute URLs. Omit for visible text."),
+  all: z.boolean().optional().describe("Return an array with every match instead of the first."),
+});
+
+export const extractSpecShape = {
+  itemSelector: z.string().max(2000).describe("CSS selector of each repeated item (row/card)."),
+  fields: z.record(z.string().min(1).max(100), extractFieldSchema).describe("Output columns: name -> how to read it from each item."),
+  nextSelector: z.string().max(2000).optional().describe("CSS selector of the 'next page' control; clicked until maxPages."),
+  maxPages: z.number().int().min(1).max(50).optional().default(1),
+  maxItems: z.number().int().min(1).max(10000).optional().default(500),
+  saveAs: z.string().regex(/^[A-Za-z0-9._-]+\.(json|csv)$/).optional().describe("Save all rows to CAMOUFOX_MCP_FILES_DIR/exports/<saveAs> (.json or .csv)."),
+  maxChars: z.number().int().min(100).max(MAX_MAX_CHARS).optional().default(DEFAULT_MAX_CHARS).describe("Maximum JSON characters of rows returned inline (when not saving)."),
+};
+
+export const extractToolShape = {
+  ...commonBrowserToolShape,
+  url: z.string().optional().describe("URL to extract from (one-shot). Provide exactly one of url or sessionId."),
+  sessionId: z.string().min(1).max(200).optional().describe("Existing session to extract from, at its current page. Provide exactly one of url or sessionId."),
+  ...extractSpecShape,
+};
+
+export type ExtractToolInput = WithWindowSize<z.infer<z.ZodObject<typeof extractToolShape>>>;
+
+export const flowSchema = z.object({
+  profile: z.string().regex(PROFILE_NAME).optional().describe("Named profile whose saved login the flow reuses."),
+  startUrl: z.string().refine((value) => /^https?:\/\//i.test(value), "startUrl must be http(s)"),
+  actions: z.array(sequenceActionSchema).max(MAX_SEQUENCE_ACTIONS),
+  extract: z.object(extractSpecShape).optional().describe("Structured extraction run after the actions."),
+  schedule: z.string().max(100).optional().describe("Cron expression (5 fields) used by `camoufox-agent serve`."),
+  timezone: z.string().max(100).optional(),
+  headless: z.union([z.boolean(), z.literal("virtual")]).optional(),
+});
+
+export type FlowDefinition = z.infer<typeof flowSchema>;
+
+export const flowNameShape = {
+  name: z.string().regex(PROFILE_NAME).describe("Flow name (lowercase letters, digits, - and _)."),
+};
+export const flowListToolShape = {};
+export const flowSaveToolShape = {
+  ...flowNameShape,
+  flow: flowSchema,
+};
+export const flowRunToolShape = flowNameShape;

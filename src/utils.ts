@@ -1,3 +1,5 @@
+import path from "node:path";
+import { existsSync } from "node:fs";
 import { DEFAULT_STEALTH_PROFILE, MAX_DIAGNOSTIC_TEXT_CHARS, SUPPORTED_OSES } from "./config.js";
 import type { BrowserLaunchInput, ProxyConfig, StealthProfile, SupportedOs } from "./types.js";
 
@@ -110,12 +112,23 @@ export function selectOperatingSystem(os: SupportedOs | undefined): SupportedOs 
   return SUPPORTED_OSES[Math.floor(Math.random() * SUPPORTED_OSES.length)];
 }
 
+function hasExecutableOnPath(name: string): boolean {
+  const dirs = (process.env.PATH ?? "").split(path.delimiter).filter(Boolean);
+  return dirs.some((dir) => existsSync(path.join(dir, name)));
+}
+
 export function defaultHeadlessMode(headless: boolean | "virtual" | undefined): boolean | "virtual" {
   if (headless !== undefined) {
     return headless;
   }
 
-  return process.platform === "linux" ? "virtual" : true;
+  const fromEnv = process.env.CAMOUFOX_AGENT_HEADLESS;
+  if (fromEnv === "true") return true;
+  if (fromEnv === "false") return false;
+  if (fromEnv === "virtual") return "virtual";
+
+  // Linux without Xvfb cannot run a virtual display; fall back to plain headless.
+  return process.platform === "linux" && hasExecutableOnPath("Xvfb") ? "virtual" : true;
 }
 
 export function applyStealthProfile<T extends BrowserLaunchInput>(input: T): T {
@@ -158,4 +171,19 @@ export function applyStealthProfile<T extends BrowserLaunchInput>(input: T): T {
     ...input,
     stealthProfile: profile,
   };
+}
+
+// Replace every occurrence of the given secrets in all strings of a payload.
+export function redactDeep<T>(value: T, secrets: readonly string[]): T {
+  const active = secrets.filter((secret) => secret.length > 0);
+  if (active.length === 0) return value;
+  const walk = (node: unknown): unknown => {
+    if (typeof node === "string") return active.reduce((text, secret) => text.split(secret).join("[REDACTED]"), node);
+    if (Array.isArray(node)) return node.map(walk);
+    if (node !== null && typeof node === "object") {
+      return Object.fromEntries(Object.entries(node).map(([key, child]) => [key, walk(child)]));
+    }
+    return node;
+  };
+  return walk(value) as T;
 }

@@ -61,6 +61,12 @@ class StatusSecurityCases:
             "browse_session_snapshot",
             "browse_session_resume",
             "browse_session_close",
+            "browse_extract",
+            "flow_list",
+            "flow_save",
+            "flow_run",
+            "browse_profiles_list",
+            "browse_profile_delete",
         }
         assert set(tool_by_name) == expected_tools
 

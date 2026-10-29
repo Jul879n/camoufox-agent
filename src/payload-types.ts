@@ -149,7 +149,9 @@ export interface SequenceActionResult {
   index: number;
   type: string;
   selector?: string;
-  status: "ok";
+  status: "ok" | "paused";
+  reason?: string;
+  label?: string;
   result?: string;
   resultTruncated?: boolean;
   durationMs: number;

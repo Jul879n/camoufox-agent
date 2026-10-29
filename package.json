@@ -1,7 +1,7 @@
 {
-    "name": "camoufox-mcp-server",
-    "version": "2.6.0",
-    "description": "MCP server for browser automation using Camoufox - a privacy-focused Firefox fork with advanced anti-detection features",
+    "name": "camoufox-agent",
+    "version": "0.1.0",
+    "description": "Fork of camoufox-mcp: Camoufox browser automation for agents (MCP stdio + HTTP/REST server, persistent profiles, flows, cron, live view)",
     "keywords": [
         "mcp",
         "camoufox",
@@ -17,9 +17,9 @@
     "type": "module",
     "main": "dist/index.js",
     "bin": {
-        "camoufox-mcp-server": "dist/index.js",
-        "camoufox-mcp-fetch": "scripts/fetch-browser.mjs",
-        "camoufox-mcp-doctor": "scripts/doctor.mjs"
+        "camoufox-agent": "dist/cli.js",
+        "camoufox-agent-fetch": "scripts/fetch-browser.mjs",
+        "camoufox-agent-doctor": "scripts/doctor.mjs"
     },
     "files": [
         "dist/**/*",
@@ -40,35 +40,30 @@
         "browser-builds.json",
         "scripts/doctor.mjs"
     ],
-    "repository": {
-        "type": "git",
-        "url": "git+https://github.com/whit3rabbit/camoufox-mcp.git"
-    },
-    "bugs": {
-        "url": "https://github.com/whit3rabbit/camoufox-mcp/issues"
-    },
-    "homepage": "https://github.com/whit3rabbit/camoufox-mcp#readme",
     "engines": {
         "node": ">=22.0.0"
     },
     "scripts": {
-        "build": "rimraf dist && tsc",
-        "start": "node dist/index.js",
+        "build": "rimraf dist && tsc && node -e \"require('fs').chmodSync('dist/cli.js',0o755)\"",
+        "start": "node dist/cli.js",
+        "serve": "node dist/cli.js serve",
         "dev": "tsc --watch",
         "lint": "eslint src/",
         "fetch:camoufox": "node scripts/fetch-browser.mjs",
         "doctor": "node scripts/doctor.mjs",
         "test": "npm run test:local",
-        "test:unit": "npm run build && node tests/unit_policy.mjs && node tests/unit_private_host_errors.mjs && node tests/unit_navigation.mjs && node tests/unit_sequence.mjs && node tests/unit_snapshot.mjs && node tests/unit_sqlite_shim.mjs && node tests/unit_browser_preflight.mjs && node tests/unit_browser_compatibility.mjs && node tests/unit_browser_fetch.mjs",
+        "test:unit": "npm run build && node tests/unit_policy.mjs && node tests/unit_private_host_errors.mjs && node tests/unit_navigation.mjs && node tests/unit_sequence.mjs && node tests/unit_snapshot.mjs && node tests/unit_sqlite_shim.mjs && node tests/unit_browser_preflight.mjs && node tests/unit_browser_compatibility.mjs && node tests/unit_browser_fetch.mjs && node tests/unit_files.mjs && node tests/unit_sessions_ttl.mjs && node tests/unit_profiles.mjs && node tests/unit_secrets.mjs && node tests/unit_csv.mjs && node tests/unit_flows.mjs && node tests/unit_scheduler.mjs",
         "test:local": "npm run build && PYTHONDONTWRITEBYTECODE=1 python3 tests/test_client.py --mode local",
         "test:camoufox": "npm run fetch:camoufox && npm run test:local",
         "test:docker": "./tests/run_tests.sh",
-        "test:all": "npm run lint && npm audit && npm run test:unit && npm run fetch:camoufox && npm run test:local"
+        "test:all": "npm run lint && npm audit && npm run test:unit && npm run fetch:camoufox && npm run test:local",
+        "prepublishOnly": "npm run build && npm run test:unit"
     },
     "dependencies": {
         "@modelcontextprotocol/sdk": "^1.29.0",
         "camoufox-js": "0.12.0",
         "chalk": "^5.6.2",
+        "croner": "^11.0.0",
         "playwright-core": "1.59.0",
         "zod": "^4.4.3"
     },
@@ -90,5 +85,13 @@
         "ts-jest": "^29.4.9",
         "typescript": "^6.0.3",
         "typescript-eslint": "^8.59.3"
-    }
+    },
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/Jul879n/camoufox-agent.git"
+    },
+    "bugs": {
+        "url": "https://github.com/Jul879n/camoufox-agent/issues"
+    },
+    "homepage": "https://github.com/Jul879n/camoufox-agent#readme"
 }

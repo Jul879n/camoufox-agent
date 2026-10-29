@@ -2,12 +2,11 @@ import { existsSync, readFileSync } from "node:fs";
 import { isIP } from "node:net";
 import type { NetworkSandboxMode, NetworkSecurityStatus, StealthProfile, SupportedOs, WaitStrategy } from "./types.js";
 
-export const SERVER_VERSION = "2.6.0";
+export const SERVER_VERSION = "0.1.0";
 export const DEFAULT_MAX_CHARS = 30000;
 export const MAX_MAX_CHARS = 200000;
 export const DEFAULT_MAX_ELEMENTS = 100;
 export const MAX_MAX_ELEMENTS = 500;
-export const MAX_SEQUENCE_ACTIONS = 25;
 export const DEFAULT_ACTION_TIMEOUT_MS = 10000;
 export const DEFAULT_WAIT_STRATEGY: WaitStrategy = "domcontentloaded";
 export const DEFAULT_STEALTH_PROFILE: StealthProfile = "normal";
@@ -98,19 +97,22 @@ export function readBoundedInteger(name: string, defaultValue: number, min: numb
   return Math.min(max, Math.max(min, value));
 }
 
-export const MAX_CONCURRENCY = readBoundedInteger("CAMOUFOX_MCP_MAX_CONCURRENCY", 1, 1, 8);
+export const MAX_CONCURRENCY = readBoundedInteger("CAMOUFOX_MCP_MAX_CONCURRENCY", 4, 1, 64);
 export const MAX_QUEUE = readBoundedInteger("CAMOUFOX_MCP_MAX_QUEUE", 8, 0, 100);
 export const QUEUE_TIMEOUT_MS = readBoundedInteger("CAMOUFOX_MCP_QUEUE_TIMEOUT_MS", 30000, 1000, 300000);
 export const LAUNCH_TIMEOUT_MS = readBoundedInteger("CAMOUFOX_MCP_LAUNCH_TIMEOUT_MS", 30000, 1000, 300000);
-export const SEQUENCE_TIMEOUT_MS = readBoundedInteger("CAMOUFOX_MCP_SEQUENCE_TIMEOUT_MS", 250000, 1000, 300000);
+export const SEQUENCE_TIMEOUT_MS = readBoundedInteger("CAMOUFOX_MCP_SEQUENCE_TIMEOUT_MS", 1000000, 1000, 3600000);
 export const MAX_SCREENSHOT_BYTES = readBoundedInteger("CAMOUFOX_MCP_MAX_SCREENSHOT_BYTES", 5 * 1024 * 1024, 1024, 20 * 1024 * 1024);
 export const MAX_SCREENSHOT_WIDTH = readBoundedInteger("CAMOUFOX_MCP_MAX_SCREENSHOT_WIDTH", 1920, 320, 3840);
 export const MAX_SCREENSHOT_HEIGHT = readBoundedInteger("CAMOUFOX_MCP_MAX_SCREENSHOT_HEIGHT", 1080, 240, 2160);
 export const MAX_SCREENSHOT_AREA = MAX_SCREENSHOT_WIDTH * MAX_SCREENSHOT_HEIGHT;
 export const MAX_DIAGNOSTIC_ENTRIES = readBoundedInteger("CAMOUFOX_MCP_MAX_DIAGNOSTIC_ENTRIES", 100, 1, 1000);
 export const MAX_DIAGNOSTIC_TEXT_CHARS = readBoundedInteger("CAMOUFOX_MCP_MAX_DIAGNOSTIC_TEXT_CHARS", 2000, 100, 20000);
-export const MAX_SESSIONS = readBoundedInteger("CAMOUFOX_MCP_MAX_SESSIONS", 1, 1, 4);
-export const SESSION_TTL_MS = readBoundedInteger("CAMOUFOX_MCP_SESSION_TTL_MS", 600000, 300000, 900000);
+export const MAX_SESSIONS = readBoundedInteger("CAMOUFOX_MCP_MAX_SESSIONS", 4, 1, 64);
+// 0 = las sesiones nunca expiran.
+export const SESSION_TTL_MS = readBoundedInteger("CAMOUFOX_MCP_SESSION_TTL_MS", 0, 0, 2147483647);
+export const SESSION_OP_TIMEOUT_MS = readBoundedInteger("CAMOUFOX_AGENT_SESSION_OP_TIMEOUT_MS", 300000, 1000, 3600000);
+export const MAX_SEQUENCE_ACTIONS = readBoundedInteger("CAMOUFOX_MCP_MAX_SEQUENCE_ACTIONS", 100, 1, 500);
 
 export function fileContains(path: string, value: string): boolean {
   try {

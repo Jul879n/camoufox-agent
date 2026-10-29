@@ -1,263 +1,111 @@
-# Camoufox MCP Server
+# camoufox-agent
 
-An MCP (Model Context Protocol) server that provides browser automation capabilities using [Camoufox](https://github.com/daijro/camoufox), a privacy-focused Firefox fork with advanced anti-detection features.
+Fork de [whit3rabbit/camoufox-mcp](https://github.com/whit3rabbit/camoufox-mcp) sobre el navegador oficial [Camoufox](https://github.com/daijro/camoufox) (binario fijado por SHA-256, sin compilar Firefox). README original: [docs/upstream-README.md](docs/upstream-README.md).
 
-## Quick Install
+Dos modos en un solo binario:
 
-Use the published npm package unless you are developing this repository locally.
+| Comando | Qué hace |
+|---|---|
+| `camoufox-agent` | Servidor MCP por stdio (Claude Code, opencode, Hermes, OpenClaw, Codex, Cursor…) |
+| `camoufox-agent serve` | HTTP: REST para apps web, MCP Streamable HTTP en `/mcp`, vista en vivo en `/live`, cron |
+| `camoufox-agent run <flujo>` | Ejecuta un flujo guardado una vez (para cron/launchd/Programador de tareas) |
+| `camoufox-agent secret set <nombre>` / `secret list` | Credenciales para `fillSecret` |
+| `camoufox-agent fetch` / `doctor` | Descarga del navegador / diagnóstico |
 
-### Tell your LLM
+## Instalación
 
-```bash
-Install camoufox-mcp and the skill using this URL: https://raw.githubusercontent.com/whit3rabbit/camoufox-mcp/refs/heads/main/llms.txt
-```
-
-### Claude Code CLI
-
-```bash
-claude mcp add camoufox -- npx -y camoufox-mcp-server@latest
-```
-
-For a shared project-scoped Claude Code config:
+Publicado en npm: [`camoufox-agent`](https://www.npmjs.com/package/camoufox-agent) (Node >= 22).
 
 ```bash
-claude mcp add --scope project camoufox -- npx -y camoufox-mcp-server@latest
+npm i -g camoufox-agent
+camoufox-agent fetch      # descarga el navegador fijado por SHA-256 (Linux, macOS, Windows)
+camoufox-agent doctor     # verifica pines, navegador y un lanzamiento real
 ```
 
-Verify with `/mcp` inside Claude Code.
+Sin instalar globalmente: `npx -y camoufox-agent <comando>` (la primera vez ejecute `npx -y camoufox-agent fetch`).
 
-### Codex CLI
+### Registro en agentes
+
+| Agente | Comando / configuración |
+|---|---|
+| Claude Code | `claude mcp add camoufox -- camoufox-agent` (o `-- npx -y camoufox-agent`) |
+| Codex | `codex mcp add camoufox -- camoufox-agent` |
+| opencode | `opencode.json`: `"mcp": { "camoufox-agent": { "type": "local", "command": ["camoufox-agent"], "enabled": true } }` |
+| Hermes | `printf "Y\n" \| hermes mcp add camoufox-agent --command camoufox-agent` |
+| OpenClaw | `openclaw mcp add camoufox-agent --command camoufox-agent` |
+| Por HTTP | `camoufox-agent serve` y apunte el cliente a `http://127.0.0.1:9420/mcp` con `Authorization: Bearer <token>` |
+
+Si el agente no hereda su `PATH`, use la ruta absoluta del binario (`which camoufox-agent`).
+
+### Desde el código fuente
 
 ```bash
-codex mcp add camoufox -- npx -y camoufox-mcp-server@latest
+git clone https://github.com/Jul879n/camoufox-agent && cd camoufox-agent
+npm install --include=optional && npm run build
+npm link
+camoufox-agent fetch
 ```
 
-Codex stores MCP servers in `~/.codex/config.toml` by default. Verify with `/mcp` inside Codex.
+## Novedades respecto al upstream
 
-### Agent Skill and Plugin Bundle
+- **Sesiones sin límite de tiempo** (`CAMOUFOX_MCP_SESSION_TTL_MS` sin definir = nunca expiran). `CAMOUFOX_MCP_MAX_SESSIONS` (4 por defecto, máx. 64), `CAMOUFOX_MCP_MAX_CONCURRENCY` (4), `CAMOUFOX_MCP_MAX_SEQUENCE_ACTIONS` (100).
+- **Perfiles persistentes**: `browse_session_start { profile }` guarda cookies, localStorage e IndexedDB (`browse_profiles_list`, `browse_profile_delete`). El perfil fija `os`/`locale`/`proxy`/`window`/fingerprint.
+- **Credenciales sin exponerlas**: acción `fillSecret` (`CAMOUFOX_SECRET_<NOMBRE>` o `secrets.json` con chmod 600).
+- **Archivos**: acciones `upload` y `download` dentro de `CAMOUFOX_MCP_FILES_DIR` (por defecto `<HOME>/files`).
+- **Extracción estructurada**: `browse_extract` (paginación, `saveAs` JSON/CSV en `exports/`).
+- **Flujos**: `flow_save`, `flow_list`, `flow_run`; login por script, extracción y `schedule` (cron de 5 campos).
+- **Humano en el loop**: acciones `waitForHuman` y `promptCode`; con `serve`, el usuario interviene desde `/live`.
+- Acción `goto` dentro de secuencias y sesiones.
 
-Use these when you want the `camoufox` skill plus the packaged MCP server config. If you only need the MCP server, use the Claude Code or Codex MCP commands above. Bare `npx -y camoufox-mcp-server@latest` remains safe by default. The packaged plugin bundle enables `CAMOUFOX_MCP_ALLOW_UNSAFE_OPTIONS=1` so the skill can use `firefox_user_prefs`, `args`, and `exclude_addons` for hard-site tuning.
+Datos en `CAMOUFOX_AGENT_HOME` (por defecto `~/.camoufox-agent`): `profiles/`, `flows/`, `runs/`, `files/`, `secrets.json`.
 
-#### OpenClaw
-
-Register the MCP server directly. This works today with no registry publish (`--arg`
-is singular and repeatable; the `--env` flag enables the unsafe-option tuning):
+## Servidor HTTP (`serve`)
 
 ```bash
-openclaw mcp add camoufox --command npx --arg -y --arg camoufox-mcp-server@latest --env CAMOUFOX_MCP_ALLOW_UNSAFE_OPTIONS=1
-openclaw mcp list
+CAMOUFOX_AGENT_TOKEN=secreto camoufox-agent serve --port 9420
 ```
 
-OpenClaw exposes the tools with provider-safe names such as `camoufox__browse`.
+- `GET /health` (sin auth) · `GET /api/tools` · `POST /api/tools/:nombre` (mismo cuerpo que el input de la tool MCP; 400 `invalid_input`, 404 `unknown_tool`, 422 si la tool devuelve error).
+- `POST|GET|DELETE /mcp`: MCP Streamable HTTP.
+- `GET /live?token=…`: vista en vivo (capturas JPEG cada 700 ms, clics y teclado reenviados, pendientes «Listo»/código).
+- `GET /api/sessions`, `/api/sessions/:id/frame.jpg`, `POST /api/sessions/:id/input`, `GET /api/human`, `POST /api/human/:id`, `GET /api/flows/:nombre/runs`.
+- Auth: `CAMOUFOX_AGENT_TOKEN` (obligatorio si `--host` no es loopback). CORS: `CAMOUFOX_AGENT_CORS_ORIGINS=https://app.ejemplo.cl`.
+- Otras: `CAMOUFOX_AGENT_HOST`, `CAMOUFOX_AGENT_PORT`, `CAMOUFOX_AGENT_HEADLESS` (`true|false|virtual`).
 
-Or install the published ClawHub bundle (skill + MCP config in one step):
+Desde una app web, llame al servidor **desde su backend**; el token nunca debe llegar al navegador del cliente:
+
+```js
+const res = await fetch("http://127.0.0.1:9420/api/tools/browse_extract", {
+  method: "POST",
+  headers: { Authorization: `Bearer ${process.env.CAMOUFOX_AGENT_TOKEN}`, "content-type": "application/json" },
+  body: JSON.stringify({ url: "https://quotes.toscrape.com", itemSelector: ".quote", fields: { author: { selector: ".author" } }, maxPages: 2 }),
+});
+```
+
+## Automatizaciones agendadas
+
+Con `serve`, cada flujo con `schedule` se ejecuta solo (`protect`: no se solapa consigo mismo). Sin servidor, programe `camoufox-agent run <flujo>`:
+
+- Linux: `*/30 * * * * camoufox-agent run mi-flujo >> ~/camoufox.log 2>&1`
+- macOS: plist de `launchd` con `ProgramArguments` = `[/usr/local/bin/camoufox-agent, run, mi-flujo]` y `StartInterval`.
+- Windows: `schtasks /create /tn camoufox-mi-flujo /sc daily /st 08:00 /tr "camoufox-agent run mi-flujo"`
+
+## Docker Compose
 
 ```bash
-openclaw plugins install clawhub:@whit3rabbit/camoufox-mcp
-openclaw plugins inspect camoufox
-openclaw plugins doctor
-openclaw gateway restart
+CAMOUFOX_AGENT_TOKEN=secreto docker compose up -d --build
+curl -s 127.0.0.1:9420/health
 ```
 
-#### Claude Code
+Los datos quedan en `./data` (el contenedor corre con uid 1001: `chown 1001 data` en Linux).
 
-Install the plugin from this repo's marketplace:
-
-```text
-/plugin marketplace add whit3rabbit/camoufox-mcp
-/plugin install camoufox@camoufox-mcp
-```
-
-Restart Claude Code or start a new session after installing.
-
-#### Codex
-
-Install the plugin from this repo's marketplace:
+## Pruebas
 
 ```bash
-codex plugin marketplace add whit3rabbit/camoufox-mcp
-codex plugin add camoufox@camoufox-mcp
+npm run lint && npm run test:unit
+for s in upload profile extract; do node scripts/mcp-smoke.mjs $s; done
+CAMOUFOX_SECRET_HEROKU_PASS='SuperSecretPassword!' node scripts/mcp-smoke.mjs secret
+CAMOUFOX_SECRET_HEROKU_PASS='SuperSecretPassword!' node scripts/mcp-smoke.mjs flow
 ```
 
-Restart Codex or start a new thread after installing.
-
-#### Hermes
-
-Two commands: install the skill, then register the MCP server (Hermes skill installs do
-**not** auto-register MCP servers).
-
-```bash
-hermes skills install whit3rabbit/camoufox-mcp/plugins/camoufox/skills/camoufox
-printf "Y\n" | hermes mcp add camoufox --command npx --env CAMOUFOX_MCP_ALLOW_UNSAFE_OPTIONS=1 --args -y camoufox-mcp-server@latest
-```
-
-> **Hermes TTY Gotcha:** `hermes mcp add` interactively prompts `"Enable all 17 tools? [Y/n/select]"`. On a non-TTY (piped/scripted inputs), the default response is `"n"` (canceled). Pipe `Y\n` as shown above to enable tools automatically.
-
-Do **not** run `hermes plugins install …` for this repo. Hermes plugins are Python
-packages with a root `plugin.yaml`; this repo has neither, so it clones but is rejected
-as "not a valid plugin." Use the two commands above.
-
-Hermes treats `--args` as plain argv tokens and it must be the last option. Do not pass a
-JSON array string there. In `~/.hermes/config.yaml`, `env` must be a **mapping**
-(`KEY: "value"`), not a list. Verify with:
-
-```bash
-hermes mcp list
-hermes mcp test camoufox
-```
-
-First `browse` on a fresh machine needs the browser binary once; download and storage
-requirements vary by platform and build. If a call
-reports it is missing, run the pinned fetch script and retry: `npm run fetch:camoufox`
-(repo checkout). After release 2.6.0 is published, npx installs can use
-`npx --yes --package camoufox-mcp-server@2.6.0 camoufox-mcp-fetch`.
-Global installs of 2.6.0 provide `camoufox-mcp-fetch` and `camoufox-mcp-doctor`.
-Do not use `camoufox-js fetch`: its release selection can install a build that
-bypasses page WebSocket interception.
-
-Restart Hermes from a separate terminal after changing MCP config. Hermes namespaces MCP
-tools as `mcp_camoufox_<tool>` (single underscore, e.g. `mcp_camoufox_browse`,
-`mcp_camoufox_camoufox_status`; some setups show the double-underscore form
-`mcp__camoufox__browse`) — use whatever your tool list shows, and confirm
-`mcp_camoufox_camoufox_status` reports `unsafeOptionsAllowed: true`. `browser_navigate` is
-Hermes' own built-in browser tool, not Camoufox.
-
-For local-clone installs and additional hosts, see [Configuration for AI assistants](docs/configuration.md#installable-agent-skill-and-plugin-bundle).
-
-### opencode
-
-Add this to `opencode.json` in your project or to `~/.config/opencode/opencode.json`:
-
-```json
-{
-  "$schema": "https://opencode.ai/config.json",
-  "mcp": {
-    "camoufox": {
-      "type": "local",
-      "command": ["npx", "-y", "camoufox-mcp-server@latest"],
-      "enabled": true
-    }
-  }
-}
-```
-
-Verify with:
-
-```bash
-opencode mcp list
-```
-
-### Pi Coding Agent
-
-Install the MCP adapter, then add Camoufox to `.mcp.json` or `~/.config/mcp/mcp.json`:
-
-```bash
-pi install npm:pi-mcp-adapter
-```
-
-```json
-{
-  "mcpServers": {
-    "camoufox": {
-      "command": "npx",
-      "args": ["-y", "camoufox-mcp-server@latest"]
-    }
-  }
-}
-```
-
-### Local and private development sites
-
-Local and private hosts are blocked by default. Source builds from `main` support an explicit hostname allowlist. npm/npx installs gain this setting in the next tagged release.
-
-Add an `env` entry to your MCP server configuration:
-
-```json
-{
-  "env": {
-    "CAMOUFOX_MCP_ALLOWED_PRIVATE_HOSTS": "localhost,laravel.test,app.internal"
-  }
-}
-```
-
-Restart the MCP server, then check `camoufox_status.networkSecurity.allowedPrivateHosts`. Configure DNS or hosts entries in the same container or VM as the server and browser. Corporate and custom DNS names also work when explicitly listed.
-
-For eligible private hosts, the MCP error text includes the exact allowlist setting and restart instruction. Read the full error and append the required hostname to any existing list.
-
-Entries are exact hostnames, without IP literals, wildcards, URLs, or ports. This is a server environment setting, separate from `browse` parameters and `CAMOUFOX_MCP_ALLOW_UNSAFE_OPTIONS`. Metadata, link-local, and reserved addresses remain blocked. See [local development policy](docs/server-policy.md#local-development-sites) for scope.
-
-## Try Camoufox
-
-Once configured, ask your assistant for browser work in plain language:
-
-```text
-Use Camoufox to browse https://example.com and return metadata only.
-```
-
-```text
-Use Camoufox to inspect the interactive elements on https://example.com.
-```
-
-```text
-Use Camoufox to open https://example.com, take a screenshot, and summarize the visible page.
-```
-
-```text
-Use Camoufox to browse https://developer.mozilla.org with images blocked and WebRTC blocked.
-```
-
-## Features
-
-- Advanced anti-detection: rotating OS fingerprints, realistic cursor movements, and browser fingerprint spoofing.
-- Enhanced parameters: configurable wait strategies, timeouts, viewport dimensions, diagnostics, and screenshots.
-- Cross-platform: works on Windows, macOS, and Linux, including Docker.
-- Privacy controls: SSRF protections, WebRTC blocking, WebGL blocking, image blocking, proxy support, and bounded output.
-- Session tools: short-lived isolated browser sessions with challenge pause/resume support.
-
-## Requirements
-
-- Published default runtime: Node.js 22.0 or higher
-- Repository builds and compatibility mode: Node.js 22.15 or higher, with `npm install --include=optional`
-- Python 3.x for running tests
-
-## Versioning
-
-The default pins are `camoufox-js` 0.12.0, `playwright-core` 1.59.0, and Camoufox 152.0.4-beta.28. Keep `playwright-core` as a direct pinned dependency: npm `overrides` alone do not pin it for `npx` or global installs. Run `npm run doctor` to verify the selected build and a real browser launch.
-
-Camoufox 156.0.1-beta.33 is available through opt-in compatibility mode. It restores page and iframe WebSocket interception by disabling the newer browser's world isolation, reducing stealth compared with its upstream defaults. The beta.28 default predates that isolation change. Worker WebSockets evade interception in both modes, so untrusted browsing needs network egress controls. See [browser compatibility setup and evidence](docs/browser-compatibility.md) before enabling it.
-
-| Environment variable | Default | Effect |
-| --- | --- | --- |
-| `CAMOUFOX_MCP_BROWSER_COMPATIBILITY` | Unset | Set to `1` during installation and startup to select beta.33 with reduced stealth. |
-| `CAMOUFOX_INSTALL_DIR` | OS cache, separate `camoufox-compatibility` cache when opted in | Override the browser directory; use the same value during installation and startup. |
-
-Use `npm run fetch:camoufox` for tagged downloads with SHA-256 checks. The shared [browser manifest](browser-builds.json) pins both modes. Avoid `camoufox-js fetch`, whose release selection can install a build that bypasses WebSocket interception.
-
-## Documentation
-
-- [Configuration for AI assistants](docs/configuration.md)
-- [Browser compatibility](docs/browser-compatibility.md)
-- [Usage examples](docs/examples.md)
-- [Tool parameters](docs/tool-parameters.md)
-- [Server policy](docs/server-policy.md)
-- [Development](docs/development.md)
-- [Troubleshooting](docs/troubleshooting.md)
-- [Privacy and security](docs/privacy-security.md)
-
-## License
-
-MIT License - see [LICENSE](LICENSE) file for details.
-
-## Contributing
-
-Contributions are welcome. Please submit a pull request or open an issue for bugs and feature requests.
-
-## Acknowledgments
-
-- Built with [Camoufox](https://github.com/daijro/camoufox)
-- Uses the [Model Context Protocol](https://modelcontextprotocol.io/)
-- Powered by [Playwright](https://playwright.dev/)
-
-## Support
-
-If you encounter issues, check [Troubleshooting](docs/troubleshooting.md) first, then open an issue on GitHub with logs and environment details.
+Los escenarios usan un sitio local (`tests/fixtures/site.mjs`) con `CAMOUFOX_MCP_ALLOWED_PRIVATE_HOSTS=localhost`.

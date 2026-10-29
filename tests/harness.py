@@ -22,6 +22,8 @@ TEST_ENV = {
     "CAMOUFOX_MCP_REQUIRE_NETWORK_SANDBOX": "0",
     "CAPTCHA_AUTONOMOUS": "false",
     "CAMOUFOX_MCP_ALLOWED_PRIVATE_HOSTS": "",
+    # Upstream suite assumes a single session; camoufox-agent defaults to 4.
+    "CAMOUFOX_MCP_MAX_SESSIONS": "1",
 }
 
 
@@ -255,7 +257,7 @@ class MCPTestClient:
             command.append(self.image_name)
         else:
             print("Starting server locally...")
-            command = ["node", "dist/index.js"]
+            command = ["node", "dist/cli.js"]
 
         process_env = None
         if self.mode != 'docker':

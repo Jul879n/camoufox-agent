@@ -35,7 +35,9 @@ const sequenceActionResultOutputSchema = z.object({
   index: z.number(),
   type: z.string(),
   selector: z.string().optional(),
-  status: z.literal("ok"),
+  status: z.enum(["ok", "paused"]),
+  reason: z.string().optional(),
+  label: z.string().optional(),
   result: z.string().optional(),
   resultTruncated: z.boolean().optional(),
   durationMs: z.number(),
@@ -310,12 +312,12 @@ export const screenshotOutputSchema = z.object({
 
 const sessionEnvelopeShape = {
   sessionId: z.string(),
-  expiresAt: z.string(),
+  expiresAt: z.string().nullable(),
 };
 
 export const sessionStartOutputSchema = z.object({
   sessionId: z.string(),
-  expiresAt: z.string(),
+  expiresAt: z.string().nullable(),
   browser: z.literal("camoufox"),
   selectedOS: z.string(),
   headlessMode: z.union([z.boolean(), z.literal("virtual")]),
@@ -394,4 +396,50 @@ export const sessionResumeOutputSchema = sessionSnapshotBaseSchema;
 export const sessionCloseOutputSchema = z.object({
   sessionId: z.string(),
   closed: z.boolean(),
+});
+
+export const profilesListOutputSchema = z.object({
+  profiles: z.array(z.object({
+    name: z.string(),
+    createdAt: z.string().nullable(),
+    lastSavedAt: z.string().nullable(),
+    inUse: z.boolean(),
+  })),
+});
+
+export const profileDeleteOutputSchema = z.object({
+  name: z.string(),
+  deleted: z.boolean(),
+});
+
+export const extractOutputSchema = z.object({
+  sessionId: z.string().optional(),
+  url: z.string(),
+  count: z.number(),
+  pages: z.number(),
+  rows: z.array(z.record(z.string(), z.union([z.string(), z.array(z.string()), z.null()]))),
+  rowsTruncated: z.boolean(),
+  savedPath: z.string().optional(),
+});
+
+export const flowListOutputSchema = z.object({
+  flows: z.array(z.object({
+    name: z.string(),
+    schedule: z.string().optional(),
+    lastRun: z.object({ ok: z.boolean(), startedAt: z.string(), trigger: z.string() }).nullable(),
+  })),
+});
+
+export const flowSaveOutputSchema = z.object({ name: z.string(), saved: z.boolean() });
+
+export const flowRunOutputSchema = z.object({
+  name: z.string(),
+  ok: z.boolean(),
+  trigger: z.string(),
+  startedAt: z.string(),
+  durationMs: z.number(),
+  steps: z.array(z.object({ index: z.number(), type: z.string(), ok: z.boolean(), error: z.string().optional() })),
+  extract: z.any().optional(),
+  error: z.string().optional(),
+  sessionId: z.string().optional(),
 });

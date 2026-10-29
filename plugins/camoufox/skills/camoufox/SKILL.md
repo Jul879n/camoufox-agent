@@ -1,11 +1,11 @@
 ---
 name: camoufox
-description: Browser automation with Camoufox MCP. Use when an agent needs to browse a URL, extract page text or structure, fill or submit forms, click through a page, screenshot, run diagnostics, drive a multi-step interactive browser session, or tune privacy and anti-detection options through the camoufox-mcp-server MCP server. Also use when a fetch or HTTP request gets blocked, returns a bot wall, needs a real browser fingerprint, or Camoufox URL policy blocks a private development hostname.
+description: Browser automation with Camoufox MCP. Use when an agent needs to browse a URL, extract page text or structure, fill or submit forms, click through a page, screenshot, run diagnostics, drive a multi-step interactive browser session, or tune privacy and anti-detection options through the camoufox-agent MCP server. Also use when a fetch or HTTP request gets blocked, returns a bot wall, needs a real browser fingerprint, or Camoufox URL policy blocks a private development hostname.
 ---
 
 # Camoufox Browser Automation
 
-Camoufox is a privacy-focused Firefox exposed through the `camoufox-mcp-server` MCP server. Reach for it when a plain HTTP fetch is not enough: JavaScript-rendered pages, bot walls, forms, multi-step flows, screenshots, or anything that benefits from a realistic browser fingerprint.
+Camoufox is a privacy-focused Firefox exposed through the `camoufox-agent` MCP server. Reach for it when a plain HTTP fetch is not enough: JavaScript-rendered pages, bot walls, forms, multi-step flows, screenshots, or anything that benefits from a realistic browser fingerprint.
 
 Every tool launches or reuses a real browser, so each call costs time and tokens. The whole skill is about getting the answer in the fewest, narrowest calls. Two habits do most of the work:
 
@@ -19,20 +19,31 @@ This skill does not start the server. Confirm an MCP server named `camoufox` is 
   "mcpServers": {
     "camoufox": {
       "command": "npx",
-      "args": ["-y", "camoufox-mcp-server@latest"],
+      "args": ["-y", "camoufox-agent"],
       "env": { "CAMOUFOX_MCP_ALLOW_UNSAFE_OPTIONS": "1" }
     }
   }
 }
 ```
 
-Bare `npx -y camoufox-mcp-server@latest` remains safe by default unless the host config adds that env var.
+Bare `npx -y camoufox-agent` remains safe by default unless the host config adds that env var.
 
-On a fresh machine, install the Camoufox binary once. From a repository checkout, run `npm run fetch:camoufox`. Global installs of 2.6.0 expose `camoufox-mcp-fetch` and `camoufox-mcp-doctor`. After release 2.6.0 is published, npx installs can use `npx --yes --package camoufox-mcp-server@2.6.0 camoufox-mcp-fetch` (replace the last command with `camoufox-mcp-doctor` for diagnostics). Use the same environment as the MCP server. Avoid `camoufox-js fetch`: its updater can select a build that bypasses WebSocket interception. Status and launch preflight inspect the cache without downloading.
+On a fresh machine, install the Camoufox binary once. From a repository checkout, run `npm run fetch:camoufox`. Global installs of 2.6.0 expose `camoufox-agent-fetch` and `camoufox-agent-doctor`. After release 2.6.0 is published, npx installs can use `npx --yes --package camoufox-agent@2.6.0 camoufox-agent-fetch` (replace the last command with `camoufox-agent-doctor` for diagnostics). Use the same environment as the MCP server. Avoid `camoufox-js fetch`: its updater can select a build that bypasses WebSocket interception. Status and launch preflight inspect the cache without downloading.
+
+## camoufox-agent additions
+
+- **Sessions never expire** (`CAMOUFOX_MCP_SESSION_TTL_MS` unset = no limit). Close them with `browse_session_close`.
+- **Persistent logins**: `browse_session_start { profile: "name" }` keeps cookies/localStorage/IndexedDB between sessions. `browse_profiles_list`, `browse_profile_delete`.
+- **Credentials without exposing them**: action `fillSecret { selector, secret }` reads `CAMOUFOX_SECRET_<NAME>` or `~/.camoufox-agent/secrets.json` (`camoufox-agent secret set <name>`). The value never appears in output.
+- **Files**: actions `upload { selector, files }` (paths inside `CAMOUFOX_MCP_FILES_DIR`) and `download { selector, filename }` (saved to `descargas/`).
+- **Navigation inside a sequence/session**: action `goto { url }`.
+- **Structured extraction**: `browse_extract { url | sessionId, itemSelector, fields, nextSelector?, maxPages?, saveAs? }` returns rows and can save `exports/<name>.json|csv`.
+- **Flows**: `flow_save`, `flow_list`, `flow_run` (login script + optional extract + cron `schedule`), also `camoufox-agent run <flow>`.
+- **Human in the loop** (sessions only): `waitForHuman { reason, until? }` and `promptCode { selector, label }`. Without `camoufox-agent serve` they return `status: "paused"`: ask the user, then continue with `fill` / `browse_session_resume`. With `serve`, the user acts from `http://127.0.0.1:9420/live`.
 
 ## Bring the Server Up (operator / local checkout)
 
-`npx camoufox-mcp-server@latest` self-installs, but a local checkout or a first
+`npx camoufox-agent` self-installs, but a local checkout or a first
 run needs the browser binary fetched and a preflight before you trust it:
 
 ```bash
@@ -309,7 +320,7 @@ Native module errors such as `better-sqlite3` compiled for the wrong Node.js ver
 If the host blocks direct config edits, do not patch protected files. Use the host CLI or tell the operator exactly what to add. For Hermes, this verified command registers Camoufox with unsafe browser options enabled:
 
 ```bash
-printf "Y\n" | hermes mcp add camoufox --command npx --env CAMOUFOX_MCP_ALLOW_UNSAFE_OPTIONS=1 --args -y camoufox-mcp-server@latest
+printf "Y\n" | hermes mcp add camoufox --command npx --env CAMOUFOX_MCP_ALLOW_UNSAFE_OPTIONS=1 --args -y camoufox-agent
 ```
 
 > **Hermes TTY Gotcha:** `hermes mcp add` interactively prompts `"Enable all 17 tools? [Y/n/select]"`. On a non-TTY (piped/scripted inputs), the default response is `"n"` (canceled). Pipe `Y\n` as shown above to automatically enable the tools.
@@ -322,7 +333,7 @@ mcp_servers:
     command: npx
     args:
       - -y
-      - camoufox-mcp-server@latest
+      - camoufox-agent
     enabled: true
     env:
       CAMOUFOX_MCP_ALLOW_UNSAFE_OPTIONS: "1"

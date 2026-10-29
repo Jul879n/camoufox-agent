@@ -11,7 +11,7 @@ import { buildBrowsePayload, buildSnapshotPayload } from "./extractors.js";
 import { buildSuccessContent, buildToolError, buildToolFailure } from "./responses.js";
 import { captureScreenshot, isScreenshotDimensionAllowed } from "./screenshots.js";
 import { runSequenceActionsWithBudget, sequenceTimeoutBudget } from "./sequence.js";
-import { defaultHeadlessMode, getProxySecrets, getProxyServer, redactUrl } from "./utils.js";
+import { redactDeep, defaultHeadlessMode, getProxySecrets, getProxyServer, redactUrl } from "./utils.js";
 import { appendDiagnostics } from "./diagnostics.js";
 
 export function buildFeatureSummary(
@@ -273,9 +273,9 @@ export async function handleSequence(input: SequenceToolInput) {
       if (input.captchaPolicy) {
         const finalResponse = getLastNavigationResponse();
         const { mergedPayload, captchaScreenshot } = await maybeDetectCaptcha(page, finalResponse, payload, input.captchaPolicy, safeUrl);
-        return buildSuccessContent(mergedPayload, (screenshotResult && screenshotResult.base64) ? screenshotResult : captchaScreenshot);
+        return buildSuccessContent(redactDeep(mergedPayload, secrets), (screenshotResult && screenshotResult.base64) ? screenshotResult : captchaScreenshot);
       }
-      return buildSuccessContent(payload, screenshotResult);
+      return buildSuccessContent(redactDeep(payload, secrets), screenshotResult);
     });
   } catch (error) {
     return buildToolFailure("browse sequence", safeUrl, error, input);

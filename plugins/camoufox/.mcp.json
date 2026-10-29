@@ -1,11 +1,7 @@
 {
   "mcpServers": {
-    "camoufox": {
-      "command": "npx",
-      "args": [
-        "-y",
-        "camoufox-mcp-server@latest"
-      ],
+    "camoufox-agent": {
+      "command": "camoufox-agent",
       "env": {
         "CAMOUFOX_MCP_ALLOW_UNSAFE_OPTIONS": "1"
       }

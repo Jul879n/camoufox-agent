@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { Browser, Response } from "playwright-core";
 import chalk from "chalk";
 import { normalizeHostname, validateTargetUrl } from "./policy.js";
-import { ALLOWED_PRIVATE_HOSTS, DEFAULT_ACTION_TIMEOUT_MS, DEFAULT_MAX_CHARS, DEFAULT_MAX_ELEMENTS, DEFAULT_WAIT_STRATEGY, MAX_SESSIONS, SESSION_CLOSE_GRACE_MS, SESSION_TTL_MS } from "./config.js";
+import { ALLOWED_PRIVATE_HOSTS, DEFAULT_ACTION_TIMEOUT_MS, DEFAULT_MAX_CHARS, DEFAULT_MAX_ELEMENTS, DEFAULT_WAIT_STRATEGY, MAX_SESSIONS, SESSION_CLOSE_GRACE_MS, SESSION_OP_TIMEOUT_MS, SESSION_TTL_MS } from "./config.js";
 import type { CaptchaPolicy, SessionRecord, SlotRelease, WaitStrategy } from "./types.js";
 import type { SessionActionToolInput, SessionCloseToolInput, SessionNavigateToolInput, SessionResumeToolInput, SessionSnapshotToolInput, SessionStartToolInput } from "./schemas.js";
 import { acquireBrowserSlot, browserContextOptions, buildCamoufoxOptions, closeBrowser, installRequestGuard, launchCamoufoxBrowser, runGuardedPageRead, settleAndAssertSafe, trackBrowser, validateBrowserOptionsInput } from "./browser-runtime.js";
@@ -12,24 +12,44 @@ import { navigateWithDocumentUrlCorrection } from "./navigation.js";
 import { buildBrowsePayload, buildSnapshotPayload } from "./extractors.js";
 import { maybeDetectCaptcha } from "./captcha.js";
 import { buildSuccessContent, buildToolError } from "./responses.js";
+import { isHumanAction, runHumanAction } from "./human.js";
 import { isLocalOperationTimeout, runSequenceAction } from "./sequence.js";
-import { applyStealthProfile, defaultHeadlessMode, describeError, getProxySecrets, getProxyServer, redactUrl, sanitizeErrorMessage, selectOperatingSystem } from "./utils.js";
+import { acquireProfileLock, loadProfile, releaseProfileLock, saveProfileSettings, saveProfileState, type ProfileSettings } from "./profiles.js";
+import { generateFingerprint } from "camoufox-js/dist/fingerprints.js";
+import { withTimeout, redactDeep, applyStealthProfile, defaultHeadlessMode, describeError, getProxySecrets, getProxyServer, redactUrl, sanitizeErrorMessage, selectOperatingSystem } from "./utils.js";
 
 let reservedSessions = 0;
 const sessions = new Map<string, SessionRecord>();
 
 export function activeSessionCount(): number { return sessions.size; }
 
-export function sessionExpiresAt(session: SessionRecord): string {
-  return new Date(session.expiresAt).toISOString();
+export function listSessions(): Array<{ id: string; profile: string | null; url: string; createdAt: string }> {
+  return [...sessions.values()].map((s) => ({ id: s.id, profile: s.profile ?? null, url: redactUrl(s.page.url()), createdAt: new Date(s.createdAt).toISOString() }));
 }
 
-export function resetSessionTtl(session: SessionRecord): void {
+export function peekSession(sessionId: string): SessionRecord | undefined { return sessions.get(sessionId); }
+
+export function sessionExpiresAt(session: SessionRecord): string | null {
+  return session.expiresAt === null ? null : new Date(session.expiresAt).toISOString();
+}
+
+// SESSION_TTL_MS === 0 means the session never expires.
+export function scheduleExpiry(session: SessionRecord): void {
   clearTimeout(session.timer);
+  if (SESSION_TTL_MS === 0) {
+    session.timer = undefined;
+    session.expiresAt = null;
+    return;
+  }
+
   session.expiresAt = Date.now() + SESSION_TTL_MS;
   session.timer = setTimeout(() => {
     void closeSession(session.id, "expired");
   }, SESSION_TTL_MS);
+}
+
+export function resetSessionTtl(session: SessionRecord): void {
+  scheduleExpiry(session);
 }
 
 export function reserveSessionSlot(): boolean {
@@ -56,12 +76,32 @@ export async function closeSessionNow(session: SessionRecord, reason: string): P
   clearTimeout(session.timer);
   console.error(chalk.blue(`[Camoufox] Closing session ${session.id} (${reason}).`));
   try {
+    if (session.profile) {
+      try {
+        await saveProfileState(session.profile, session.context);
+      } catch (saveError) {
+        console.error(chalk.red(`[Camoufox] Failed to save profile ${session.profile}: ${describeError(saveError)}`));
+      }
+    }
     await closeBrowser(session.browser);
   } finally {
+    if (session.profile) releaseProfileLock(session.profile);
     session.releaseSlot();
     releaseSessionSlot();
   }
   return true;
+}
+
+const PROFILE_AUTOSAVE_MS = 30000;
+
+export async function autosaveProfile(session: SessionRecord): Promise<void> {
+  if (!session.profile || session.closed || Date.now() - (session.lastProfileSaveAt ?? 0) < PROFILE_AUTOSAVE_MS) return;
+  session.lastProfileSaveAt = Date.now();
+  try {
+    await saveProfileState(session.profile, session.context);
+  } catch (saveError) {
+    console.error(chalk.red(`[Camoufox] Failed to save profile ${session.profile}: ${describeError(saveError)}`));
+  }
 }
 
 export async function closeSession(sessionId: string, reason: string): Promise<boolean> {
@@ -104,7 +144,7 @@ export async function getSession(sessionId: string): Promise<SessionRecord> {
     throw new Error(`Unknown or closed session: ${sessionId}`);
   }
 
-  if (Date.now() > session.expiresAt) {
+  if (session.expiresAt !== null && Date.now() > session.expiresAt) {
     await closeSession(sessionId, "expired");
     throw new Error(`Session expired: ${sessionId}`);
   }
@@ -116,6 +156,7 @@ export async function getSession(sessionId: string): Promise<SessionRecord> {
 export async function runSessionExclusive<T>(
   session: SessionRecord,
   operation: () => Promise<T>,
+  timeoutMs = SESSION_OP_TIMEOUT_MS,
 ): Promise<T> {
   const run = session.op.catch(() => undefined).then(async () => {
     if (session.closing || session.closed) {
@@ -123,7 +164,7 @@ export async function runSessionExclusive<T>(
     }
 
     try {
-      return await operation();
+      return await withTimeout(operation(), timeoutMs, "Session operation");
     } catch (error) {
       if (isLocalOperationTimeout(error)) {
         await closeSessionNow(session, "operation-timeout");
@@ -181,16 +222,47 @@ export async function handleSessionStart(input: SessionStartToolInput) {
 
   let release: SlotRelease | undefined;
   let browser: Browser | undefined;
+  let lockedProfile: string | undefined;
   try {
-    await validateBrowserOptionsInput(effectiveInput);
+    if (input.profile) {
+      acquireProfileLock(input.profile);
+      lockedProfile = input.profile;
+    }
+    const stored = input.profile ? loadProfile(input.profile) : undefined;
+    const profileSettings = stored?.settings ?? undefined;
+    // A stored profile keeps a stable identity: its settings win over the input.
+    const launchInput = profileSettings ? {
+      ...effectiveInput,
+      os: profileSettings.os,
+      locale: profileSettings.locale ?? effectiveInput.locale,
+      proxy: profileSettings.proxy ?? effectiveInput.proxy,
+      window: (profileSettings.window ?? effectiveInput.window) as typeof effectiveInput.window,
+      viewport: profileSettings.viewport ?? effectiveInput.viewport,
+    } : effectiveInput;
+    await validateBrowserOptionsInput(launchInput);
     release = await acquireBrowserSlot();
-    const selectedOS = selectOperatingSystem(effectiveInput.os);
-    const waitStrategy = effectiveInput.waitStrategy ?? DEFAULT_WAIT_STRATEGY;
-    const headlessMode = defaultHeadlessMode(effectiveInput.headless);
+    const selectedOS = selectOperatingSystem(launchInput.os);
+    const waitStrategy = launchInput.waitStrategy ?? DEFAULT_WAIT_STRATEGY;
+    const headlessMode = defaultHeadlessMode(launchInput.headless);
 
-    browser = await launchCamoufoxBrowser(buildCamoufoxOptions(effectiveInput, selectedOS, headlessMode));
+    let fingerprint = profileSettings?.fingerprint;
+    if (input.profile && !profileSettings) {
+      fingerprint = generateFingerprint(undefined, { operatingSystems: [selectedOS] }) as unknown as Record<string, unknown>;
+      const created: ProfileSettings = {
+        os: selectedOS,
+        locale: launchInput.locale,
+        proxy: launchInput.proxy,
+        window: launchInput.window,
+        viewport: launchInput.viewport,
+        fingerprint,
+        createdAt: new Date().toISOString(),
+      };
+      saveProfileSettings(input.profile, created);
+    }
+
+    browser = await launchCamoufoxBrowser({ ...buildCamoufoxOptions(launchInput, selectedOS, headlessMode), ...(fingerprint ? { fingerprint, i_know_what_im_doing: true } : {}) });
     trackBrowser(browser);
-    const context = await browser.newContext(browserContextOptions(effectiveInput));
+    const context = await browser.newContext(browserContextOptions(launchInput, stored?.statePath));
     const requestGuard = await installRequestGuard(context);
     const page = await context.newPage();
     requestGuard.watchPage(page);
@@ -213,10 +285,9 @@ export async function handleSessionStart(input: SessionStartToolInput) {
       rawUrls,
       secrets,
       createdAt: now,
-      expiresAt: now + SESSION_TTL_MS,
-      timer: setTimeout(() => {
-        void closeSession(id, "expired");
-      }, SESSION_TTL_MS),
+      profile: input.profile,
+      lastProfileSaveAt: Date.now(),
+      expiresAt: null,
       lastNavigationResponse: null,
       op: Promise.resolve(),
       closing: false,
@@ -227,9 +298,11 @@ export async function handleSessionStart(input: SessionStartToolInput) {
       session.lastNavigationResponse = response;
     });
 
+    scheduleExpiry(session);
     sessions.set(id, session);
     browser = undefined;
     release = undefined;
+    lockedProfile = undefined;
 
     return buildSuccessContent({
       sessionId: id,
@@ -247,6 +320,7 @@ export async function handleSessionStart(input: SessionStartToolInput) {
     if (release) {
       release();
     }
+    if (lockedProfile) releaseProfileLock(lockedProfile);
     releaseSessionSlot();
     const errorMessage = sanitizeErrorMessage(
       describeError(error),
@@ -303,7 +377,7 @@ export async function buildSessionSnapshotResult(
     captchaPolicy,
     redactUrl(session.page.url()),
   );
-  return buildSuccessContent(mergedPayload, captchaScreenshot);
+  return buildSuccessContent(redactDeep(mergedPayload, session.secrets), captchaScreenshot);
 }
 
 export async function handleSessionNavigate(input: SessionNavigateToolInput) {
@@ -323,7 +397,8 @@ export async function handleSessionNavigate(input: SessionNavigateToolInput) {
       const basePayload = { sessionId: currentSession.id, expiresAt: sessionExpiresAt(currentSession), ...payload };
       const captchaPolicy = effectiveCaptchaPolicy(currentSession, input);
       const { mergedPayload, captchaScreenshot } = await maybeDetectCaptcha(currentSession.page, response, basePayload, captchaPolicy, redactUrl(input.url));
-      return buildSuccessContent(mergedPayload, captchaScreenshot);
+      await autosaveProfile(currentSession);
+      return buildSuccessContent(redactDeep(mergedPayload, currentSession.secrets), captchaScreenshot);
     });
   } catch (error) {
     return buildToolError(`Failed to navigate session. Error: ${sessionSanitizedError(error, session, [input.url])}`);
@@ -336,7 +411,16 @@ export async function handleSessionAction(input: SessionActionToolInput) {
     const currentSession = await getSession(input.sessionId);
     session = currentSession;
     return await runSessionExclusive(currentSession, async () => {
-      const actionResult = await runSequenceAction(currentSession.page, input.action, 0, currentSession.rawUrls, currentSession.secrets);
+      let actionResult;
+      if (input.action.type === "goto") {
+        const gotoStarted = Date.now();
+        await navigateSession(currentSession, input.action.url, input.action.waitStrategy, input.action.timeout);
+        actionResult = { index: 0, type: "goto", status: "ok" as const, durationMs: Date.now() - gotoStarted };
+      } else if (isHumanAction(input.action)) {
+        actionResult = await runHumanAction(currentSession, input.action);
+      } else {
+        actionResult = await runSequenceAction(currentSession.page, input.action, 0, currentSession.rawUrls, currentSession.secrets);
+      }
       await settleAndAssertSafe(currentSession.page, currentSession.requestGuard);
       const snapshot = await runGuardedPageRead(
         currentSession.page,
@@ -350,11 +434,13 @@ export async function handleSessionAction(input: SessionActionToolInput) {
           () => currentSession.lastNavigationResponse,
         ),
       );
-      const basePayload = { sessionId: currentSession.id, expiresAt: sessionExpiresAt(currentSession), action: actionResult, snapshot };
+      const paused = actionResult.status === "paused" ? { requiresUserAction: true, message: actionResult.reason } : {};
+      const basePayload = { sessionId: currentSession.id, expiresAt: sessionExpiresAt(currentSession), action: actionResult, snapshot, ...paused };
       const captchaPolicy = effectiveCaptchaPolicy(currentSession, input);
       const { mergedPayload, captchaScreenshot } = await maybeDetectCaptcha(currentSession.page, currentSession.lastNavigationResponse, basePayload, captchaPolicy, redactUrl(currentSession.page.url()));
-      return buildSuccessContent(mergedPayload, captchaScreenshot);
-    });
+      await autosaveProfile(currentSession);
+      return buildSuccessContent(redactDeep(mergedPayload, currentSession.secrets), captchaScreenshot);
+    }, isHumanAction(input.action) ? (input.action.timeout ?? 600000) + 30000 : SESSION_OP_TIMEOUT_MS);
   } catch (error) {
     // Failed actions skip the success-path guard check. Read its recorded
     // denial after runSessionExclusive has completed any timeout cleanup.
