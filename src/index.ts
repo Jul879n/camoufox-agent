@@ -19,8 +19,8 @@ export function installProcessHandlers(): void {
     void shutdown("uncaughtException", 1);
   });
   process.on("unhandledRejection", (reason, promise) => {
+    // A stray rejection must not drop every live session; log only.
     console.error(chalk.red("[Camoufox] Unhandled rejection at:", promise, "reason:", reason));
-    void shutdown("unhandledRejection", 1);
   });
 }
 

@@ -94,6 +94,7 @@ export const snapshotToolShape = {
 };
 
 export const actionTimeoutSchema = z.number().min(100).max(60000).optional();
+export const downloadTimeoutSchema = z.number().min(100).max(3600000).optional().describe("Max ms for the download (default 120000).");
 export const humanTimeoutSchema = z.number().min(1000).max(3600000).optional().describe("Max ms to wait for a human (default 600000).");
 export const frameSchema = z.string().max(2000).optional()
   .describe("CSS selector of an iframe. The action's selector is resolved inside this iframe.");
@@ -174,11 +175,12 @@ export const sequenceActionSchema = z.discriminatedUnion("type", [
   }),
   z.object({
     type: z.literal("download"),
-    selector: z.string().max(2000).describe("Element that triggers a download when clicked."),
+    selector: z.string().max(2000).optional().describe("Element that triggers a download when clicked. Provide exactly one of selector or url."),
+    url: z.string().max(4000).optional().describe("Direct download URL, fetched with the session cookies and streamed to disk. Recommended for large files."),
     frame: frameSchema,
     filename: z.string().min(1).max(200).regex(/^[A-Za-z0-9._-]+$/).describe("File name saved under CAMOUFOX_MCP_FILES_DIR/descargas."),
-    timeout: actionTimeoutSchema,
-  }),
+    timeout: downloadTimeoutSchema,
+  }).refine((a) => Boolean(a.selector) !== Boolean(a.url), { message: "download requires exactly one of selector or url" }),
   z.object({
     type: z.literal("fillSecret"),
     selector: z.string().max(2000),
@@ -274,6 +276,8 @@ export const findToolShape = {
 
 export const screenshotToolShape = {
   ...commonBrowserToolShape,
+  url: z.string().optional().describe("URL to capture (one-shot). Provide exactly one of url or sessionId."),
+  sessionId: z.string().min(1).max(200).optional().describe("Existing session to capture in its current state."),
   selector: z.string().max(2000).optional().describe("Optional CSS selector for element-only screenshots."),
   fullPage: z.boolean().optional().default(false).describe("Capture the full page instead of only the viewport."),
   type: z.enum(["png", "jpeg"]).optional().default("png").describe("Screenshot image type."),

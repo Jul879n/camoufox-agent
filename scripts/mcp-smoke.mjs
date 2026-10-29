@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { startFixtureSite } from "../tests/fixtures/site.mjs";
+import { BIG_SIZE, startFixtureSite } from "../tests/fixtures/site.mjs";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -310,6 +310,102 @@ const scenarios = {
     return { result: { files, savedPath: report.savedPath }, expect: "smoke-report.json" };
   },
 };
+
+const scenariosExtra = {
+  async download(call, client) {
+    const dir = path.join(process.env.CAMOUFOX_MCP_FILES_DIR ?? path.join(ROOT, "tests/fixtures/files"), "descargas");
+    const files = ["smoke-sel.bin", "smoke-url.bin"].map((f) => path.join(dir, f));
+    for (const f of files) fs.rmSync(f, { force: true });
+    const start = await call("browse_session_start", {});
+    const sessionId = start.sessionId;
+    await call("browse_session_navigate", { sessionId, url: `${HEROKU}/app` });
+    await call("browse_session_action", { sessionId, action: { type: "download", selector: "#dl", filename: "smoke-sel.bin" } });
+    await call("browse_session_action", { sessionId, action: { type: "download", url: `${HEROKU}/big.bin`, filename: "smoke-url.bin" } });
+    const sizes = files.map((f) => fs.existsSync(f) ? fs.statSync(f).size : -1);
+    if (sizes.some((n) => n !== BIG_SIZE)) throw new Error(`tamaños=${sizes} esperado=${BIG_SIZE}`);
+    // Selector inexistente: debe fallar sin tumbar el servidor ni la sesión.
+    const bad = await client.callTool({ name: "browse_session_action", arguments: { sessionId, action: { type: "download", selector: "#nope", filename: "smoke-bad.bin", timeout: 1000 } } });
+    if (!bad.isError) throw new Error("se esperaba error en download inexistente");
+    // url que no descarga (página 200 o error HTTP): debe fallar de inmediato, no al vencer el timeout.
+    for (const bad of ["/api/data", "/gone"]) {
+      const t0 = Date.now();
+      const r = await client.callTool({ name: "browse_session_action", arguments: { sessionId, action: { type: "download", url: `${HEROKU}${bad}`, filename: "smoke-bad2.bin", timeout: 60000 } } });
+      if (!r.isError || Date.now() - t0 > 15000) throw new Error(`download ${bad}: isError=${r.isError} ms=${Date.now() - t0}`);
+    }
+    // Por selector: enlace a un error HTTP, y clic que no inicia ninguna descarga.
+    for (const [selector, want] of [["#dlbad", "HTTP 404"], ["#inc", "did not start"]]) {
+      const t0 = Date.now();
+      const r = await client.callTool({ name: "browse_session_action", arguments: { sessionId, action: { type: "download", selector, filename: "smoke-bad3.bin", timeout: 3000 } } });
+      const msg = JSON.stringify(r.content ?? r.structuredContent);
+      if (!r.isError || !msg.includes(want) || Date.now() - t0 > 10000) throw new Error(`download ${selector}: isError=${r.isError} ms=${Date.now() - t0} msg=${msg.slice(0, 200)}`);
+    }
+    const snap = await call("browse_session_snapshot", { sessionId });
+    if (snap.sessionId !== sessionId) throw new Error("la sesión no sobrevivió a los errores de download");
+    await call("browse_session_close", { sessionId });
+    for (const f of files) fs.rmSync(f, { force: true });
+    return { result: { sizes, sessionAlive: snap.sessionId ?? sessionId }, expect: sessionId };
+  },
+
+  async "download-kinds"(call, client) {
+    const dir = path.join(process.env.CAMOUFOX_MCP_FILES_DIR ?? path.join(ROOT, "tests/fixtures/files"), "descargas");
+    const start = await call("browse_session_start", {});
+    const sessionId = start.sessionId;
+    await call("browse_session_navigate", { sessionId, url: `${HEROKU}/downloads` });
+    const results = {};
+    const cases = [
+      ["#d-redirect", {}], ["#d-blank", {}], ["#d-js", {}], ["#d-blob", {}], ["#d-post", {}], ["#d-frame", { frame: "#fr" }],
+    ];
+    for (const [selector, extra] of cases) {
+      const filename = `kind-${selector.slice(3)}.bin`;
+      fs.rmSync(path.join(dir, filename), { force: true });
+      const r = await client.callTool({ name: "browse_session_action", arguments: { sessionId, action: { type: "download", selector, filename, timeout: 30000, ...extra } } });
+      const file = path.join(dir, filename);
+      results[selector] = r.isError ? JSON.stringify(r.content).slice(0, 150) : (fs.existsSync(file) ? fs.statSync(file).size : "sin archivo");
+      fs.rmSync(file, { force: true });
+      // tras una navegación por JS la página puede haber cambiado: volver al origen
+      await call("browse_session_navigate", { sessionId, url: `${HEROKU}/downloads` });
+    }
+    const redirectUrl = await client.callTool({ name: "browse_session_action", arguments: { sessionId, action: { type: "download", url: `${HEROKU}/redirect-file`, filename: "kind-url-redirect.bin", timeout: 30000 } } });
+    results["url+redirect"] = redirectUrl.isError ? JSON.stringify(redirectUrl.content).slice(0, 150) : fs.statSync(path.join(dir, "kind-url-redirect.bin")).size;
+    fs.rmSync(path.join(dir, "kind-url-redirect.bin"), { force: true });
+    await call("browse_session_close", { sessionId });
+    const bad = Object.entries(results).filter(([, v]) => typeof v !== "number" || v <= 0);
+    if (bad.length) throw new Error(`fallaron: ${JSON.stringify(bad)}`);
+    return { result: results, expect: "#d-blob" };
+  },
+
+  async elements(call) {
+    const start = await call("browse_session_start", {});
+    const sessionId = start.sessionId;
+    await call("browse_session_navigate", { sessionId, url: `${HEROKU}/frames` });
+    const snap = await call("browse_session_snapshot", { sessionId });
+    const find = (pred) => snap.elements.find(pred);
+    const shadow = find((e) => e.name === "shadow" || e.text === "shadow");
+    const inner = find((e) => e.text === "inner");
+    const sum = find((e) => e.tag === "summary");
+    const oc = find((e) => e.text === "oc");
+    if (!shadow || !inner || !sum || !oc) throw new Error(`faltan: shadow=${!!shadow} inner=${!!inner} summary=${!!sum} onclick=${!!oc}`);
+    const titles = [];
+    for (const [el, want] of [[shadow, "shadow"], [inner, "inner"], [oc, "oc"]]) {
+      await call("browse_session_action", { sessionId, action: { type: "click", selector: el.selector, ...(el.frame ? { frame: el.frame } : {}) } });
+      const t = await call("browse_session_snapshot", { sessionId });
+      titles.push(t.title);
+      if (t.title !== want) throw new Error(`clic en ${want}: título=${t.title}`);
+    }
+    await call("browse_session_close", { sessionId });
+    return { result: { titles, shadow, inner }, expect: "inner" };
+  },
+
+  async "screenshot-session"(call) {
+    const start = await call("browse_session_start", {});
+    const sessionId = start.sessionId;
+    await call("browse_session_navigate", { sessionId, url: `${HEROKU}/app` });
+    const shot = await call("browse_screenshot", { sessionId });
+    await call("browse_session_close", { sessionId });
+    return { result: shot, expect: "\"included\":true" };
+  },
+};
+Object.assign(scenarios, scenariosExtra);
 
 const name = process.argv[2];
 if (name === "http") {

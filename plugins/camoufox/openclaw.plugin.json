@@ -2,7 +2,7 @@
   "id": "camoufox-agent",
   "name": "Camoufox Agent",
   "description": "Bundles Camoufox Agent browser automation skill and MCP server config.",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "skills": [
     "./skills"
   ],

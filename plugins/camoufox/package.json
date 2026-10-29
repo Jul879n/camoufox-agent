@@ -1,6 +1,6 @@
 {
   "name": "camoufox-agent",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Camoufox Agent browser automation bundle for OpenClaw.",
   "type": "module",
   "license": "MIT",
