@@ -1,7 +1,7 @@
 {
   "name": "camoufox-agent",
   "description": "Camoufox Agent browser automation plugin",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "owner": {
     "name": "followthewhit3rabbit"
   },
