@@ -27,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The 1024-request cap per session is removed (heavy sites such as Discord exceeded it and rendered blank). Every request is still validated against the network policy.
 - An isolated `unhandledRejection` is logged instead of shutting the server down (and dropping every session). `uncaughtException` still shuts down.
 
 ## [0.3.0] - 2026-10-29

@@ -374,6 +374,21 @@ const scenariosExtra = {
     return { result: results, expect: "#d-blob" };
   },
 
+  async "many-requests"(call) {
+    const start = await call("browse_session_start", {});
+    const sessionId = start.sessionId;
+    await call("browse_session_navigate", { sessionId, url: `${HEROKU}/many` });
+    await call("browse_session_action", { sessionId, action: { type: "waitFor", selector: "html", timeout: 100 } });
+    let title = "";
+    for (let i = 0; i < 60 && title !== "many-1300"; i += 1) {
+      await new Promise((r) => setTimeout(r, 1000));
+      title = (await call("browse_session_snapshot", { sessionId, maxElements: 1 })).title;
+    }
+    await call("browse_session_close", { sessionId });
+    if (title !== "many-1300") throw new Error(`más de 1024 peticiones no completaron: ${title}`);
+    return { result: { title }, expect: "many-1300" };
+  },
+
   async elements(call) {
     const start = await call("browse_session_start", {});
     const sessionId = start.sessionId;

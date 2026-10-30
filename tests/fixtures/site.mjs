@@ -64,6 +64,9 @@ export function startFixtureSite(port = 0) {
 <form method="post" action="/file-post"><button id="d-post" type="submit">post</button></form>
 <iframe id="fr" srcdoc="<a id='d-frame' href='/big.bin' download>frame</a>"></iframe>`));
       }
+      if (url.pathname === "/many") {
+        return send(200, page(`<script>(async()=>{let ok=0;for(let i=0;i<1300;i++){const r=await fetch('/api/data?i='+i).catch(()=>null);if(r&&r.ok)ok++}document.title='many-'+ok})()</script>`));
+      }
       if (url.pathname === "/gone") return send(404, page("<h1>gone</h1>"));
       if (url.pathname === "/frames") {
         return send(200, page(`<button id="top">top</button>
