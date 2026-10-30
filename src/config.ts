@@ -10,7 +10,6 @@ export const MAX_MAX_ELEMENTS = 500;
 export const DEFAULT_ACTION_TIMEOUT_MS = 10000;
 export const DEFAULT_WAIT_STRATEGY: WaitStrategy = "domcontentloaded";
 export const DEFAULT_STEALTH_PROFILE: StealthProfile = "normal";
-export const MAX_GUARDED_REQUESTS = 1024;
 export const MAX_EXTRACT_NODES = 50000;
 export const GUARD_SETTLE_MS = 100;
 export const SESSION_CLOSE_GRACE_MS = 5000;

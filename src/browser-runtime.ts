@@ -2,7 +2,7 @@ import { Camoufox, type LaunchOptions } from "camoufox-js";
 import type { Browser, BrowserContext, Page, Response, Route } from "playwright-core";
 import chalk from "chalk";
 import { normalizeHostname, parseAndValidateBrowserRequestUrl, validateBrowserRequestUrl, validateTargetUrl } from "./policy.js";
-import { ALLOWED_PRIVATE_HOSTS, DEFAULT_WAIT_STRATEGY, GUARD_SETTLE_MS, LAUNCH_TIMEOUT_MS, MAX_CONCURRENCY, MAX_GUARDED_REQUESTS, MAX_QUEUE, QUEUE_TIMEOUT_MS } from "./config.js";
+import { ALLOWED_PRIVATE_HOSTS, DEFAULT_WAIT_STRATEGY, GUARD_SETTLE_MS, LAUNCH_TIMEOUT_MS, MAX_CONCURRENCY, MAX_QUEUE, QUEUE_TIMEOUT_MS } from "./config.js";
 import { createDiagnosticsCollector } from "./diagnostics.js";
 import { browserContextOptions, buildCamoufoxOptions, validateCommonBrowserInput } from "./browser-options.js";
 import { assertBrowserBinaryAvailable } from "./browser-preflight.js";
@@ -105,23 +105,12 @@ export async function launchCamoufoxBrowser(options: CamoufoxOptions): Promise<B
 }
 
 export async function installRequestGuard(context: BrowserContext): Promise<RequestGuard> {
-  let inspectedRequests = 0;
   let blockedRequestError: Error | undefined;
 
   function blockRequest(rawUrl: string, reason: string): void {
     if (!blockedRequestError) {
       blockedRequestError = new Error(`Blocked unsafe browser request to ${redactUrl(rawUrl)}. ${reason}`);
     }
-  }
-
-  function hasRequestBudget(rawUrl: string): boolean {
-    if (inspectedRequests >= MAX_GUARDED_REQUESTS) {
-      blockRequest(rawUrl, "Too many browser requests.");
-      return false;
-    }
-
-    inspectedRequests += 1;
-    return true;
   }
 
   context.on("request", (request) => {
@@ -135,11 +124,6 @@ export async function installRequestGuard(context: BrowserContext): Promise<Requ
 
   await context.route("**/*", async (route: Route) => {
     const requestUrl = route.request().url();
-
-    if (!hasRequestBudget(requestUrl)) {
-      await route.abort("blockedbyclient").catch(() => undefined);
-      return;
-    }
 
     try {
       await validateBrowserRequestUrl(requestUrl);
@@ -156,11 +140,6 @@ export async function installRequestGuard(context: BrowserContext): Promise<Requ
 
   await context.routeWebSocket(/.*/, async (webSocket) => {
     const requestUrl = webSocket.url();
-
-    if (!hasRequestBudget(requestUrl)) {
-      await webSocket.close({ code: 1008, reason: "Blocked by server policy" }).catch(() => undefined);
-      return;
-    }
 
     try {
       await validateBrowserRequestUrl(requestUrl);
@@ -180,14 +159,12 @@ export async function installRequestGuard(context: BrowserContext): Promise<Requ
       }
     },
     watchPage(page: Page): void {
-      // WebSocket targets are gated by context.routeWebSocket above (budget +
-      // validation). Observing them again here would double-count each socket
-      // against the request budget, so this hook is intentionally a no-op.
+      // WebSocket targets are gated by context.routeWebSocket above; observing
+      // them again here would validate each socket twice, so this hook is intentionally a no-op.
       void page;
     },
-    resetBudget(): void {
-      inspectedRequests = 0;
-    },
+    // Requests are no longer capped; kept so callers need no change.
+    resetBudget(): void {},
   };
 }
 
