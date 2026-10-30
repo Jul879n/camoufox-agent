@@ -1,0 +1,38 @@
+name: Publish to npm
+
+# Publishes with npm Trusted Publishing (OIDC): no npm token or OTP is stored.
+# One-time setup on npmjs.com: package camoufox-agent > Settings > Trusted Publisher >
+# GitHub Actions > owner Jul879n, repository camoufox-agent, workflow filename publish.yml.
+on:
+  push:
+    tags: [ 'v*' ]
+  workflow_dispatch:
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+    - uses: actions/checkout@v7
+
+    - uses: actions/setup-node@v6
+      with:
+        node-version: 24.x
+        registry-url: https://registry.npmjs.org
+        cache: npm
+
+    - name: Check release version synchronization
+      run: node tests/check_release_versions.mjs
+
+    - name: Check the tag matches package.json
+      if: startsWith(github.ref, 'refs/tags/v')
+      run: test "v$(node -p "require('./package.json').version")" = "${GITHUB_REF_NAME}"
+
+    - run: npm ci --include=optional
+
+    # prepublishOnly builds and runs the unit tests.
+    - name: Publish
+      run: npm publish --provenance --access public
