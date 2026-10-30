@@ -453,7 +453,7 @@ export async function handleSessionAction(input: SessionActionToolInput) {
       const { mergedPayload, captchaScreenshot } = await maybeDetectCaptcha(currentSession.page, currentSession.lastNavigationResponse, basePayload, captchaPolicy, redactUrl(currentSession.page.url()));
       await autosaveProfile(currentSession);
       return buildSuccessContent(redactDeep(mergedPayload, currentSession.secrets), captchaScreenshot);
-    }, isHumanAction(input.action) ? (input.action.timeout ?? 600000) + 30000 : input.action.type === "download" ? actionTimeout(input.action) + 30000 : SESSION_OP_TIMEOUT_MS);
+    }, isHumanAction(input.action) ? (input.action.timeout ?? 600000) + 30000 : input.action.type === "download" ? actionTimeout(input.action) + 60000 : SESSION_OP_TIMEOUT_MS);
   } catch (error) {
     // Failed actions skip the success-path guard check. Read its recorded
     // denial after runSessionExclusive has completed any timeout cleanup.

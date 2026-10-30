@@ -200,6 +200,8 @@ return {
 };
 }
 
+const FRAME_READ_MS = 1500;
+
 export async function extractSnapshotElements(
   page: Page,
   maxElements: number,
@@ -213,15 +215,21 @@ export async function extractSnapshotElements(
   for (const frame of page.frames()) {
     if (frame.parentFrame() !== mainFrame) continue;
     if (main.elements.length >= maxElements) { main.truncated = true; break; }
-    try {
+    // A slow or hung frame is skipped after FRAME_READ_MS so it cannot eat the snapshot budget
+    // (whose "timed out." wording would make the session layer close the session).
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const skipped = new Promise<null>((resolve) => { timer = setTimeout(() => resolve(null), FRAME_READ_MS); });
+    const read = (async () => {
       const handle = await frame.frameElement();
       const frameSelector = await mainFrame.evaluate(snapshotDocument, { maxItems: 0, selectorOf: handle as never }) as string;
       const inner = await frame.evaluate(snapshotDocument, { maxItems: maxElements - main.elements.length }) as DocumentSnapshot;
-      for (const element of inner.elements) main.elements.push({ ...element, frame: frameSelector });
-      if (inner.truncated) main.truncated = true;
-    } catch {
-      // Detached or navigating frame: skip it.
-    }
+      return { frameSelector, inner };
+    })().catch(() => null); // Detached or navigating frame: skip it.
+    const result = await Promise.race([read, skipped]);
+    clearTimeout(timer);
+    if (!result) continue;
+    for (const element of result.inner.elements) main.elements.push({ ...element, frame: result.frameSelector });
+    if (result.inner.truncated) main.truncated = true;
   }
   return main;
 }

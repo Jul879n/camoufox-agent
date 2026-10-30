@@ -1,6 +1,6 @@
 # camoufox-agent
 
-Fork de [whit3rabbit/camoufox-mcp](https://github.com/whit3rabbit/camoufox-mcp) sobre el navegador oficial [Camoufox](https://github.com/daijro/camoufox) (binario fijado por SHA-256, sin compilar Firefox). README original: [docs/upstream-README.md](docs/upstream-README.md).
+Servidor MCP de automatización de navegador sobre el navegador oficial [Camoufox](https://github.com/daijro/camoufox) (binario fijado por SHA-256, sin compilar Firefox). Basado en el proyecto MIT [whit3rabbit/camoufox-mcp](https://github.com/whit3rabbit/camoufox-mcp). README original: [docs/upstream-README.md](docs/upstream-README.md).
 
 Dos modos en un solo binario:
 

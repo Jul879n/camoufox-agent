@@ -13,11 +13,11 @@ The MCP server works on every host via `npx -y camoufox-mcp-server@latest`.
 Add `CAMOUFOX_MCP_ALLOW_UNSAFE_OPTIONS=1` in the env only if you need `firefox_user_prefs` / `args` / `exclude_addons` for hard-site tuning; bare installs are safe by default.
 
 - **Claude Code (CLI)**: `claude mcp add camoufox -- npx -y camoufox-mcp-server@latest` (project scope: add `--scope project`). Verify with `/mcp`.
-- **Claude Code (plugin + skill)**: `/plugin marketplace add whit3rabbit/camoufox-mcp` then `/plugin install camoufox@camoufox-mcp`.
+- **Claude Code (plugin + skill)**: `/plugin marketplace add Jul879n/camoufox-agent` then `/plugin install camoufox@camoufox-mcp`.
 - **Codex (CLI)**: `codex mcp add camoufox -- npx -y camoufox-mcp-server@latest` (env before `--`: `codex mcp add camoufox --env CAMOUFOX_MCP_ALLOW_UNSAFE_OPTIONS=1 -- npx -y camoufox-mcp-server@latest`). Stored in `~/.codex/config.toml`.
-- **Codex (plugin)**: `codex plugin marketplace add whit3rabbit/camoufox-mcp` then `codex plugin add camoufox@camoufox-mcp`.
-- **OpenClaw**: `openclaw mcp add camoufox --command npx --arg -y --arg camoufox-mcp-server@latest --env CAMOUFOX_MCP_ALLOW_UNSAFE_OPTIONS=1` (note `--arg` is singular and repeatable). Or install the published ClawHub bundle: `openclaw plugins install clawhub:@whit3rabbit/camoufox-mcp`.
-- **Hermes (two steps)**: `hermes skills install whit3rabbit/camoufox-mcp/plugins/camoufox/skills/camoufox`, then register the MCP server:
+- **Codex (plugin)**: `codex plugin marketplace add Jul879n/camoufox-agent` then `codex plugin add camoufox@camoufox-mcp`.
+- **OpenClaw**: `openclaw mcp add camoufox --command npx --arg -y --arg camoufox-mcp-server@latest --env CAMOUFOX_MCP_ALLOW_UNSAFE_OPTIONS=1` (note `--arg` is singular and repeatable). Or install the published ClawHub bundle: `openclaw plugins install clawhub:@Jul879n/camoufox-agent`.
+- **Hermes (two steps)**: `hermes skills install Jul879n/camoufox-agent/plugins/camoufox/skills/camoufox`, then register the MCP server:
   ```bash
   printf "Y\n" | hermes mcp add camoufox --command npx --env CAMOUFOX_MCP_ALLOW_UNSAFE_OPTIONS=1 --args -y camoufox-mcp-server@latest
   ```

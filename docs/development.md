@@ -6,7 +6,7 @@ Repository builds require Node.js >=22.15 and the optional launcher for its Type
 
 ```bash
 # Clone the repository
-git clone https://github.com/whit3rabbit/camoufox-mcp.git
+git clone https://github.com/Jul879n/camoufox-agent.git
 cd camoufox-mcp
 
 # Install dependencies

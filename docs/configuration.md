@@ -32,7 +32,7 @@ Bare `npx -y camoufox-mcp-server@latest` remains safe by default and does not se
 From the public GitHub repository:
 
 ```text
-/plugin marketplace add whit3rabbit/camoufox-mcp
+/plugin marketplace add Jul879n/camoufox-agent
 /plugin install camoufox@camoufox-mcp
 ```
 
@@ -87,7 +87,7 @@ OpenClaw exposes bundled MCP tools with provider-safe names such as `camoufox__b
 Hermes can install the skill directly from the repository path once the repo is public:
 
 ```bash
-hermes skills install whit3rabbit/camoufox-mcp/plugins/camoufox/skills/camoufox
+hermes skills install Jul879n/camoufox-agent/plugins/camoufox/skills/camoufox
 printf "Y\n" | hermes mcp add camoufox --command npx --env CAMOUFOX_MCP_ALLOW_UNSAFE_OPTIONS=1 --args -y camoufox-mcp-server@latest
 ```
 

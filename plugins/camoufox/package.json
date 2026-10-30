@@ -6,7 +6,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/whit3rabbit/camoufox-mcp.git",
+    "url": "git+https://github.com/Jul879n/camoufox-agent.git",
     "directory": "plugins/camoufox"
   },
   "keywords": [

@@ -16,6 +16,7 @@ class FakePage extends EventEmitter {
     return { status: () => status, headers: () => ({ "content-type": "text/html" }), request: () => request };
   }
   mainFrame() { return this.frame; }
+  frames() { return []; }
   url() { return "https://example.com/same-url"; }
   waitForLoadState(_state, { timeout }) { assert.ok(timeout > 0 && timeout <= 10000); return Promise.resolve(); }
   async phase(name) {
