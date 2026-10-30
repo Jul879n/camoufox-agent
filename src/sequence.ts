@@ -39,7 +39,15 @@ async function runDownload(source: Page, trigger: () => Promise<void>, target: s
   // Only requests issued during this call count; late events of an earlier navigation must not leak in.
   const mine = new WeakSet<PwRequest>();
   const failure = new Promise<never>((_, reject) => {
-    const onRequest = (request: PwRequest): void => { mine.add(request); };
+    // Top-level frames only: an iframe or tracker navigation that errors must not fail the download.
+    const onRequest = (request: PwRequest): void => {
+      try {
+        if (request.frame().parentFrame() === null) mine.add(request);
+      } catch {
+        // A popup's first navigation request has no frame yet (Playwright throws): it is top-level.
+        mine.add(request);
+      }
+    };
     const onResponse = (response: PwResponse): void => {
       if (mine.has(response.request()) && response.request().isNavigationRequest() && response.status() >= 400) {
         reject(new Error(`Download failed with HTTP ${response.status()} at ${redactUrl(response.url())}.`));
@@ -56,32 +64,44 @@ async function runDownload(source: Page, trigger: () => Promise<void>, target: s
     stopWatching = () => { context.off("request", onRequest); context.off("response", onResponse); context.off("requestfailed", onFailed); };
   });
   failure.catch(() => undefined);
-  const started = source.waitForEvent("download", { timeout: startMs });
-  started.catch(() => undefined);
+  let onDownload: (download: PwDownload) => void = () => undefined;
+  const started = new Promise<PwDownload>((resolve) => { onDownload = resolve; source.once("download", onDownload); });
+  let startTimer: ReturnType<typeof setTimeout> | undefined;
+  // The start deadline only runs once the trigger (element wait + click) is done.
+  const startedInTime = (): Promise<PwDownload> => Promise.race([
+    started,
+    new Promise<never>((_, reject) => {
+      startTimer = setTimeout(() => reject(new Error(`Download did not start within ${Math.round(startMs / 1000)}s: no download event and no error response from the site.`)), startMs);
+    }),
+  ]);
 
   let download: PwDownload;
   try {
-    download = await Promise.race([(async () => { await trigger(); return started; })(), failure]);
-  } catch (error) {
-    if (/Timeout \d+ms exceeded/.test(describeError(error))) {
-      throw new Error(`Download did not start within ${Math.round(startMs / 1000)}s: no download event and no error response from the site.`, { cause: error });
-    }
-    throw error;
+    download = await Promise.race([(async () => { await trigger(); return startedInTime(); })(), failure]);
   } finally {
+    clearTimeout(startTimer);
+    source.off("download", onDownload);
     stopWatching();
   }
 
+  // Save to a private temp name, then link into place: never overwrites a file another call just wrote.
+  const partial = `${target}.part-${process.pid}-${Date.now()}`;
   try {
     // Not a bare " timed out." message: that wording makes the session layer close the whole session.
-    await withTimeout(download.saveAs(target), timeout, "Download transfer").catch((error: unknown) => {
+    await withTimeout(download.saveAs(partial), timeout, "Download transfer").catch((error: unknown) => {
       if (isLocalOperationTimeout(error)) throw new Error(`Download transfer exceeded ${Math.round(timeout / 1000)}s; partial file discarded.`, { cause: error });
       throw error;
     });
     const reason = await download.failure();
     if (reason) throw new Error(`Download failed: ${reason}.`);
-  } catch (error) {
-    fs.rmSync(target, { force: true });
-    throw error;
+    try {
+      fs.linkSync(partial, target);
+    } catch (linkError) {
+      if ((linkError as NodeJS.ErrnoException).code === "EEXIST") throw new Error(`File already exists: ${path.basename(target)}`, { cause: linkError });
+      throw linkError;
+    }
+  } finally {
+    fs.rmSync(partial, { force: true });
   }
 }
 

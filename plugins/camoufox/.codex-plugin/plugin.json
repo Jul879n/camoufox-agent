@@ -3,11 +3,11 @@
   "version": "0.3.1",
   "description": "Bundle Camoufox Agent browser automation tools and usage guidance.",
   "author": {
-    "name": "followthewhit3rabbit",
-    "url": "https://github.com/whit3rabbit"
+    "name": "Jul879n",
+    "url": "https://github.com/Jul879n"
   },
-  "homepage": "https://github.com/whit3rabbit/camoufox-mcp#readme",
-  "repository": "https://github.com/whit3rabbit/camoufox-mcp",
+  "homepage": "https://github.com/Jul879n/camoufox-agent#readme",
+  "repository": "https://github.com/Jul879n/camoufox-agent",
   "license": "MIT",
   "keywords": [
     "mcp",
@@ -23,13 +23,13 @@
     "displayName": "Camoufox",
     "shortDescription": "Stealth browser automation via MCP",
     "longDescription": "Install Camoufox Agent browser automation tools with portable guidance for browsing, screenshots, extraction, sessions, diagnostics, and privacy-sensitive tuning.",
-    "developerName": "followthewhit3rabbit",
+    "developerName": "Jul879n",
     "category": "Browser",
     "capabilities": [
       "Interactive",
       "Read"
     ],
-    "websiteURL": "https://github.com/whit3rabbit/camoufox-mcp",
+    "websiteURL": "https://github.com/Jul879n/camoufox-agent",
     "defaultPrompt": [
       "Use Camoufox to inspect a website.",
       "Use Camoufox to screenshot a page.",
