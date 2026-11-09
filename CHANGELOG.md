@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-09
+
+### Added
+- `browse_scrape` tool and `camoufox-agent scrape`: tiered scrape (HTTP -> user's Chrome -> Camoufox on challenge) returning compact JSON (markdown, images, links, tables, metadata), with a per-host tier cache and human-like behavior.
+- `serve` keeps browsers warm; CLI and library delegate to it.
+- `camoufox-agent call <tool>` and `camoufox-agent run <file.json>` for automation without an agent; library entry (`import { scrape, callTool, runFlow } from "camoufox-agent"`).
+- `camoufox-scrape` lite build (`lite-pkg/`, ~270 KB, no dependencies): HTTP plus Chrome over raw CDP.
+
+### Changed
+- Minimum Node is now 22.15 (uses `node:sqlite`); `better-sqlite3` is replaced by an override stub, cutting the install to ~76 MB.
+- Package description and LICENSE state the derivation from camoufox-mcp (MIT).
+
+### Fixed
+- Structured extraction waits for items after pagination on JS-rendered lists.
+- Hosts that do not resolve (dead trackers) no longer abort a session or flow; private-address blocks are unchanged.
+
 ## [0.3.1] - 2026-10-29
 
 ### Added
