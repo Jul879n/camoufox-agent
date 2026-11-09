@@ -21,7 +21,19 @@ import { handleAudit } from "./audit-tool.js";
 import { handleStorage, handleNetworkRequest, handleSessionNetwork, handleDiagnose, handleInspect, handleSessionTrace } from "./diagnose-tool.js";
 import { handleProfileDelete, handleProfilesList } from "./profile-tools.js";
 import { handleBrowse, handleConsole, handleFind, handleForms, handleLinks, handleNetworkSummary, handleOutline, handleScreenshot, handleSequence, handleSnapshot, handleStatus } from "./tool-handlers.js";
+import { scrapeToolShape, type ScrapeToolInput } from "./schema/tools.js";
+import { handleScrapeTool } from "./scrape/tool.js";
 import { handleSessionAction, handleSessionClose, handleSessionNavigate, handleSessionResume, handleSessionSnapshot, handleSessionStart } from "./sessions.js";
+
+export async function invokeTool(name: string, body: unknown): Promise<{ status: 200 | 400 | 404 | 422; payload: unknown }> {
+  const tool = TOOL_REGISTRY.get(name);
+  if (!tool) return { status: 404, payload: { error: "unknown_tool" } };
+  const parsed = z.object(tool.shape).safeParse(body ?? {});
+  if (!parsed.success) return { status: 400, payload: { error: "invalid_input", issues: parsed.error.issues } };
+  const result = await (tool.handler as (input: unknown) => Promise<CallToolResult>)(parsed.data);
+  const payload = result.structuredContent ?? { content: result.content };
+  return result.isError ? { status: 422, payload: { ...payload, content: result.content } } : { status: 200, payload };
+}
 
 export type ToolHandler = (input: never) => Promise<CallToolResult>;
 export const TOOL_REGISTRY = new Map<string, { description: string; shape: z.ZodRawShape; handler: ToolHandler }>();
@@ -76,6 +88,7 @@ function registerAll(): void {
   registerJsonTool("browse_session_resume", "Resume a paused session after human action and return current state.", sessionResumeToolShape, nonReadOnlyOpenWorld, async (input) => handleSessionResume(input as SessionResumeToolInput), sessionResumeOutputSchema);
   registerJsonTool("browse_session_close", "Close an existing browser session.", sessionCloseToolShape, nonReadOnlyOpenWorld, async (input) => handleSessionClose(input as SessionCloseToolInput), sessionCloseOutputSchema);
 
+  registerJsonTool("browse_scrape", "Fast tiered scrape (HTTP -> Chrome -> Camoufox) returning compact JSON: markdown, images, links, tables, metadata.", scrapeToolShape, readOnlyOpenWorld, async (input) => handleScrapeTool(input as ScrapeToolInput));
   registerJsonTool("browse_extract", "Extract repeated items (rows/cards) into structured JSON, optionally paginating and saving to JSON/CSV under CAMOUFOX_MCP_FILES_DIR/exports. Use url (one-shot) or sessionId.", extractToolShape, nonReadOnlyOpenWorld, async (input) => handleExtract(input as ExtractToolInput), extractOutputSchema);
   registerJsonTool("flow_list", "List saved flows (scripted login/automation) with their schedule and last run.", flowListToolShape, { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }, async () => handleFlowList(), flowListOutputSchema);
   registerJsonTool("flow_save", "Create or overwrite a saved flow: optional profile, startUrl, bounded actions, optional extract and cron schedule.", flowSaveToolShape, { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false }, async (input) => handleFlowSave(input as { name: string; flow: FlowDefinition }), flowSaveOutputSchema);

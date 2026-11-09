@@ -1,0 +1,14 @@
+{
+    "name": "camoufox-scrape",
+    "version": "0.1.0",
+    "description": "Dependency-free scraper: HTTP tier plus your own Chrome over raw CDP. Returns markdown, images, links, tables and metadata as compact JSON.",
+    "keywords": ["scraping", "scraper", "markdown", "cdp", "headless-chrome"],
+    "license": "MIT",
+    "type": "module",
+    "main": "index.js",
+    "types": "index.d.ts",
+    "exports": { ".": { "types": "./index.d.ts", "default": "./index.js" } },
+    "files": ["index.js", "index.d.ts", "README.md"],
+    "engines": { "node": ">=22.15.0" },
+    "dependencies": {}
+}

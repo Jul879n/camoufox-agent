@@ -1,15 +1,14 @@
 import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
 import http from "node:http";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
-import { z } from "zod";
 import chalk from "chalk";
 import { SERVER_VERSION, assertNetworkSandboxPolicy } from "./config.js";
-import { TOOL_REGISTRY, createMcpServer } from "./register-tools.js";
+import { TOOL_REGISTRY, createMcpServer, invokeTool } from "./register-tools.js";
 import { sanitizeErrorMessage, describeError } from "./utils.js";
 import { addShutdownHook } from "./index.js";
 import { handleLiveRoute } from "./live-routes.js";
 import { setHttpActive } from "./http-state.js";
+import { enableWarmPool } from "./scrape/warm-pool.js";
 import { startScheduler, stopScheduler } from "./scheduler.js";
 
 const MAX_BODY_BYTES = 2 * 1024 * 1024;
@@ -65,13 +64,8 @@ function applyCors(req: http.IncomingMessage, res: http.ServerResponse, origins:
 }
 
 async function callTool(name: string, body: unknown, res: http.ServerResponse): Promise<void> {
-  const tool = TOOL_REGISTRY.get(name);
-  if (!tool) return sendJson(res, 404, { error: "unknown_tool" });
-  const parsed = z.object(tool.shape).safeParse(body ?? {});
-  if (!parsed.success) return sendJson(res, 400, { error: "invalid_input", issues: parsed.error.issues });
-  const result = await (tool.handler as (input: unknown) => Promise<CallToolResult>)(parsed.data);
-  const payload = result.structuredContent ?? { content: result.content };
-  sendJson(res, result.isError ? 422 : 200, result.isError ? { ...payload, content: result.content } : payload);
+  const result = await invokeTool(name, body);
+  sendJson(res, result.status, result.payload);
 }
 
 export async function startHttpServer(options: HttpServerOptions = {}): Promise<http.Server> {
@@ -135,6 +129,7 @@ export async function startHttpServer(options: HttpServerOptions = {}): Promise<
     server.listen(port, host, () => resolve());
   });
   setHttpActive(true);
+  enableWarmPool();
   startScheduler();
   addShutdownHook(async () => {
     setHttpActive(false);

@@ -62,6 +62,7 @@ class StatusSecurityCases:
             "browse_session_resume",
             "browse_session_close",
             "browse_extract",
+            "browse_scrape",
             "browse_diagnose",
             "browse_inspect",
             "browse_session_tabs",
