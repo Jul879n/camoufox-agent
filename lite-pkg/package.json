@@ -1,9 +1,11 @@
 {
-    "name": "camoufox-scrape",
+    "name": "@jul879n/scrape-lite",
     "version": "0.1.0",
     "description": "Dependency-free scraper: HTTP tier plus your own Chrome over raw CDP. Returns markdown, images, links, tables and metadata as compact JSON.",
     "keywords": ["scraping", "scraper", "markdown", "cdp", "headless-chrome"],
     "license": "MIT",
+    "repository": { "type": "git", "url": "git+https://github.com/Jul879n/camoufox-agent.git", "directory": "lite-pkg" },
+    "publishConfig": { "access": "public" },
     "type": "module",
     "main": "index.js",
     "types": "index.d.ts",

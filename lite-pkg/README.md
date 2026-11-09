@@ -1,9 +1,9 @@
-# camoufox-scrape
+# @jul879n/scrape-lite
 
 Zero-dependency scraper (~270 KB). HTTP first; if the page needs JavaScript or blocks plain requests it drives **your own Chrome** over raw DevTools Protocol (no Playwright, no bundled browser).
 
 ```js
-import { scrape } from "camoufox-scrape";
+import { scrape } from "@jul879n/scrape-lite";
 const r = await scrape("https://quotes.toscrape.com/js/");
 // r.markdown, r.images, r.links, r.tables, r.metadata, r.engine ("http" | "chrome")
 ```
