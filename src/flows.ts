@@ -145,14 +145,23 @@ async function captureFailure(sessionId: string, run: FlowRun): Promise<void> {
   run.failure = redactDeep(failure, session.secrets);
 }
 
+/** Run a flow given as an object (e.g. read from a file). No run history is written. */
+export async function runFlowDefinition(name: string, flow: FlowDefinition, options: { trigger: FlowTrigger }): Promise<FlowRun> {
+  return execFlow(name, () => flow, options, false);
+}
+
 export async function runFlow(name: string, options: { trigger: FlowTrigger }): Promise<FlowRun> {
+  return execFlow(name, () => loadFlow(name), options, true);
+}
+
+async function execFlow(name: string, getFlow: () => FlowDefinition, options: { trigger: FlowTrigger }, saveHistory: boolean): Promise<FlowRun> {
   const started = Date.now();
   const run: FlowRun = { name, ok: false, trigger: options.trigger, startedAt: new Date(started).toISOString(), durationMs: 0, steps: [] };
   let sessionId: string | undefined;
   let keepOpen = false;
 
   try {
-    const flow = loadFlow(name);
+    const flow = getFlow();
     const start = await handleSessionStart({ profile: flow.profile, headless: flow.headless } as unknown as SessionStartToolInput) as ToolResult;
     if (start.isError) throw new Error(errorText(start));
     sessionId = start.structuredContent?.sessionId as string;
@@ -194,7 +203,7 @@ export async function runFlow(name: string, options: { trigger: FlowTrigger }): 
     if (sessionId && !keepOpen) await handleSessionClose({ sessionId });
     run.durationMs = Date.now() - started;
     try {
-      writeRun(run);
+      if (saveHistory) writeRun(run);
     } catch (writeError) {
       console.error(`[Camoufox] Failed to write run record: ${describeError(writeError)}`);
     }

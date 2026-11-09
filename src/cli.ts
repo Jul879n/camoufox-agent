@@ -8,13 +8,27 @@ const USAGE = `Usage: camoufox-agent [command]
 
   (none)                      MCP server over stdio
   serve [--host H] [--port P] HTTP server: REST, MCP over HTTP, live view, cron
-  run <flow>                  Run a saved flow once and print its JSON result
+  scrape <url> [--engine auto|http|chrome|camoufox] [--full] [--fast] [--timeout <s>] [--no-server]
+                              Tiered scrape (HTTP -> Chrome -> Camoufox) to JSON
+  call <tool> [json|-]        Call any MCP tool directly (JSON args or stdin) and print its JSON
+  run <flow|file.json>                  Run a saved flow once and print its JSON result
   test <flow...> | --all      Run flows as tests [--junit <file>]; exit 1 if any fails
   secret set <name>           Store a secret (value read from stdin, no echo)
   secret list                 List secret names
   fetch                       Download the pinned Camoufox browser
   doctor                      Check the installation
 `;
+
+async function runTarget(target: string): Promise<import("./flows.js").FlowRun> {
+  const { runFlow, runFlowDefinition } = await import("./flows.js");
+  const fs = await import("node:fs");
+  if (target.endsWith(".json") && fs.existsSync(target)) {
+    const { flowSchema } = await import("./schema/tools.js");
+    const flow = flowSchema.parse(JSON.parse(fs.readFileSync(target, "utf8")));
+    return runFlowDefinition(path.basename(target, ".json"), flow, { trigger: "cli" });
+  }
+  return runFlow(target, { trigger: "cli" });
+}
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -23,6 +37,11 @@ function runScript(script: string): Promise<number> {
     const child = spawn(process.execPath, [path.join(root, "scripts", script)], { stdio: "inherit" });
     child.on("exit", (code) => resolve(code ?? 1));
   });
+}
+
+/** process.exit() right after console.log truncates piped output above the pipe buffer (~64 KB). */
+function exitAfterWrite(text: string, code: number): Promise<never> {
+  return new Promise(() => { process.stdout.write(`${text}\n`, () => process.exit(code)); });
 }
 
 function flag(args: string[], name: string): string | undefined {
@@ -70,12 +89,52 @@ async function main(): Promise<void> {
       }
       return;
     }
+    case "scrape": {
+      const url = args.find((a, i) => !a.startsWith("--") && !["--engine", "--timeout"].includes(args[i - 1] ?? ""));
+      if (!url) { console.error(USAGE); process.exit(2); }
+      const { scrape } = await import("./scrape/index.js");
+      const engine = (flag(args, "--engine") ?? "auto") as "auto" | "http" | "chrome" | "camoufox";
+      if (!["auto", "http", "chrome", "camoufox"].includes(engine)) { console.error(USAGE); process.exit(2); }
+      const timeout = flag(args, "--timeout");
+      const result = await scrape(url, {
+        engine,
+        full: args.includes("--full"),
+        fast: args.includes("--fast"),
+        useServer: !args.includes("--no-server"),
+        ...(timeout ? { timeoutMs: Number(timeout) * 1000 } : {}),
+      });
+      await exitAfterWrite(JSON.stringify(result, null, 2), result.success ? 0 : 1);
+      return;
+    }
+    case "call": {
+      if (!args[0]) { console.error(USAGE); process.exit(2); }
+      await import("./sqlite-compat.js");
+      const { createMcpServer, invokeTool } = await import("./register-tools.js");
+      const { closeActiveBrowsers } = await import("./browser-runtime.js");
+      let raw = args[1];
+      if (raw === "-" || (raw === undefined && !process.stdin.isTTY)) {
+        const chunks: Buffer[] = [];
+        for await (const chunk of process.stdin) chunks.push(chunk as Buffer);
+        raw = Buffer.concat(chunks).toString("utf8");
+      }
+      let input: unknown = {};
+      try {
+        input = raw?.trim() ? JSON.parse(raw) : {};
+      } catch {
+        console.error("Invalid JSON arguments");
+        process.exit(2);
+      }
+      createMcpServer();
+      const { status, payload } = await invokeTool(args[0], input);
+      await closeActiveBrowsers();
+      await exitAfterWrite(JSON.stringify(payload, null, 2), status === 200 ? 0 : 1);
+      return;
+    }
     case "run": {
       if (!args[0]) { console.error(USAGE); process.exit(2); }
       await import("./sqlite-compat.js");
-      const { runFlow } = await import("./flows.js");
       const { closeActiveBrowsers } = await import("./browser-runtime.js");
-      const run = await runFlow(args[0], { trigger: "cli" });
+      const run = await runTarget(args[0]);
       console.log(JSON.stringify(run, null, 2));
       await closeActiveBrowsers();
       process.exit(run.ok ? 0 : 1);
@@ -85,7 +144,7 @@ async function main(): Promise<void> {
       const all = args.includes("--all");
       const junitFile = flag(args, "--junit");
       await import("./sqlite-compat.js");
-      const { runFlow, listFlowNames } = await import("./flows.js");
+      const { listFlowNames } = await import("./flows.js");
       const { toJunit } = await import("./junit.js");
       const { closeActiveBrowsers } = await import("./browser-runtime.js");
       const skip = new Set(junitFile ? ["--junit", junitFile] : []);
@@ -93,7 +152,7 @@ async function main(): Promise<void> {
       if (names.length === 0) { console.error(USAGE); process.exit(2); }
       const runs = [];
       for (const name of names) {
-        const run = await runFlow(name, { trigger: "cli" });
+        const run = await runTarget(name);
         runs.push(run);
         const failed = run.steps.filter((step) => step.status !== "passed").length;
         console.error(`${run.ok ? "✓" : "✗"} ${name} (${run.durationMs}ms) ${run.steps.length} steps, ${failed} failed`);

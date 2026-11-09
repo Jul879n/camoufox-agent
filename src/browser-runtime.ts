@@ -1,4 +1,4 @@
-import { Camoufox, type LaunchOptions } from "camoufox-js";
+import type { LaunchOptions } from "camoufox-js";
 import type { Browser, BrowserContext, Page, Response, Route } from "playwright-core";
 import chalk from "chalk";
 import { normalizeHostname, parseAndValidateBrowserRequestUrl, validateBrowserRequestUrl, validateTargetUrl } from "./policy.js";
@@ -86,7 +86,7 @@ export async function launchCamoufoxBrowser(options: CamoufoxOptions): Promise<B
   let timedOut = false;
   const launchPromise = BROWSER_COMPATIBILITY
     ? launchCompatibilityBrowser(options, probeBrowserBinary(), Number(EXPECTED_BROWSER_BUILD.version.split(".")[0]))
-    : Camoufox<undefined, Browser>(options as LaunchOptions);
+    : import("camoufox-js").then(({ Camoufox }) => Camoufox<undefined, Browser>(options as LaunchOptions));
   launchPromise.then(
     (browser) => {
       if (timedOut) {
@@ -128,7 +128,11 @@ export async function installRequestGuard(context: BrowserContext): Promise<Requ
     try {
       await validateBrowserRequestUrl(requestUrl);
     } catch (requestError) {
-      blockRequest(requestUrl, describeError(requestError));
+      // A host that does not resolve (dead tracker, blocked analytics) cannot reach a private network:
+      // abort that one request but do not fail the whole page or flow.
+      if (!/Could not resolve URL host|did not resolve to an address/.test(describeError(requestError))) {
+        blockRequest(requestUrl, describeError(requestError));
+      }
       await route.abort("blockedbyclient").catch(() => undefined);
       return;
     }

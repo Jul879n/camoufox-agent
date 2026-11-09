@@ -514,3 +514,14 @@ export const visualDiffToolShape = {
   update: z.boolean().optional().default(false).describe("Overwrite the baseline with the current capture."),
 };
 export type VisualDiffToolInput = z.infer<z.ZodObject<typeof visualDiffToolShape>>;
+
+export const scrapeToolShape = {
+  url: z.string().describe("http(s) URL to scrape."),
+  engine: z.enum(["auto", "http", "chrome", "camoufox"]).optional().default("auto").describe("auto escalates HTTP -> Chrome -> Camoufox."),
+  full: z.boolean().optional().default(false).describe("Include the raw HTML."),
+  timeoutMs: z.number().int().min(1000).max(120000).optional().default(30000),
+  fast: z.boolean().optional().default(false).describe("Skip human-like mouse/scroll and use the fast Camoufox profile."),
+  browserOnly: z.boolean().optional().default(false).describe("Skip the HTTP tier (internal, used by CLI delegation)."),
+};
+
+export type ScrapeToolInput = z.infer<z.ZodObject<typeof scrapeToolShape>>;

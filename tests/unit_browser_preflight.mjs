@@ -154,7 +154,7 @@ try {
     }
     symlinkSync(join(installedRoot, path), join(binDir, name), "file");
   }
-  assert.equal(installedManifest.engines.node, ">=22.0.0", "default mode must retain its declared Node support");
+  assert.equal(installedManifest.engines.node, ">=22.15.0", "default mode must retain its declared Node support");
   assert.equal(installedManifest.dependencies["@camoufox/camoufox"], undefined, "the newer Node requirement must be optional for default installs");
   assert.equal(installedManifest.optionalDependencies["@camoufox/camoufox"], builds.compatibility.launcherVersion);
   const lock = JSON.parse(readFileSync(join(root, "package-lock.json"), "utf8"));

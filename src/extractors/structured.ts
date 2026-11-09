@@ -87,6 +87,8 @@ export async function runStructuredExtract(
     while (await pageSignature(page, spec) === before && Date.now() < deadline) {
       await new Promise((resolve) => setTimeout(resolve, 150));
     }
+    // JS-rendered lists change the URL before the new items exist; wait for them or the page reads as empty.
+    await page.waitForSelector(spec.itemSelector, { timeout: 10000 }).catch(() => undefined);
     if (requestGuard) await settleAndAssertSafe(page, requestGuard);
   }
 

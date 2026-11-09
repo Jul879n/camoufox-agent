@@ -153,3 +153,5 @@ repomix-output.xml
 .e2e-home/
 tests/fixtures/files/exports/
 data/
+
+lite-pkg/index.js
