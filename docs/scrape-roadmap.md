@@ -42,8 +42,8 @@ Prerrequisito: `cd ~/dev/camoufox-agent`, Node ≥ 22.15, Chrome instalado, Camo
 - Desviaciones: `humanizePage` tiene tope duro (el cursor humanizado de Camoufox podía colgarlo); Chrome espera ≤ 6 s a que un interstitial se resuelva antes de escalar a Camoufox; caché de nivel por host+primer segmento de ruta (24 h, `~/.cache/camoufox-agent/tiers.json`) evita repetir HTTP en sitios JS; el cierre del navegador privado no se espera (ahorra ~0,3 s).
 - `installRequestGuard` (con `routeWebSocket`) funciona en Chromium; se ignoran sus bloqueos por "Could not resolve URL host" (hosts efímeros de desafíos).
 
-## Librería ligera (`camoufox-scrape`, `lite-pkg/`)
-- [x] `dist/lite.js` 272 KB, cero dependencias (HTTP + Chrome del usuario por CDP crudo con el `WebSocket` nativo de Node; sin Playwright ni Camoufox). Paquete `camoufox-scrape`: 80,8 kB comprimido; instalado en un proyecto limpio `node_modules` = 284 KB.
+## Librería ligera (`@jul879n/scrape-lite`, `lite-pkg/`)
+- [x] `dist/lite.js` 272 KB, cero dependencias (HTTP + Chrome del usuario por CDP crudo con el `WebSocket` nativo de Node; sin Playwright ni Camoufox). Paquete `@jul879n/scrape-lite`: 80,8 kB comprimido; instalado en un proyecto limpio `node_modules` = 284 KB.
 - [x] Consumidor limpio: `scrape()` → `http 200 20` (books) y `chrome true 11` (quotes/js). nowsecure por CDP: `success` y "NOWSECURE", ~2,5 s.
 - [x] `tests/unit_scrape_lite.mjs` (tamaño < 400 KB, sin imports pesados, política SSRF). Camoufox solo vía `serve` (delegación) o el paquete completo.
 - [x] Regresión: `test:unit` 24/24, `test:local` pasa, benchmark 100 % (30/30).
