@@ -76,6 +76,7 @@ class StatusSecurityCases:
             "flow_list",
             "flow_save",
             "flow_run",
+            "live_link",
             "browse_profiles_list",
             "browse_profile_delete",
         }
