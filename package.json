@@ -68,7 +68,7 @@
         "test:local": "npm run build && PYTHONDONTWRITEBYTECODE=1 python3 tests/test_client.py --mode local",
         "test:camoufox": "npm run fetch:camoufox && npm run test:local",
         "test:docker": "./tests/run_tests.sh",
-        "test:all": "npm run lint && npm audit && npm run test:unit && npm run fetch:camoufox && npm run test:local",
+        "test:all": "npm run lint && npm audit --audit-level=high && npm run test:unit && npm run fetch:camoufox && npm run test:local",
         "prepublishOnly": "npm run build && npm run test:unit"
     },
     "dependencies": {

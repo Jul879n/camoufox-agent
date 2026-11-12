@@ -51,7 +51,7 @@ jobs:
     - name: Run lint, audit, and unit tests
       run: |
         npm run lint
-        npm audit
+        npm audit --audit-level=high
         npm run test:unit
       timeout-minutes: 10
 

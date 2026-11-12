@@ -20,7 +20,10 @@ class Cdp {
       if (msg.id !== undefined) {
         const entry = this.pending.get(msg.id);
         this.pending.delete(msg.id);
-        if (entry) msg.error ? entry.reject(new Error(msg.error.message)) : entry.resolve(msg.result);
+        if (entry) {
+          if (msg.error) entry.reject(new Error(msg.error.message));
+          else entry.resolve(msg.result);
+        }
       } else if (msg.method) {
         for (const fn of this.listeners.get(msg.method) ?? []) fn(msg.params ?? {}, msg.sessionId);
       }
