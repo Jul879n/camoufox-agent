@@ -1,6 +1,6 @@
 {
     "name": "camoufox-agent",
-    "version": "0.6.0",
+    "version": "0.6.1",
     "description": "Camoufox browser automation for agents, derived from camoufox-mcp (MIT; MCP stdio + HTTP/REST server, persistent profiles, flows, cron, live view)",
     "keywords": [
         "mcp",
@@ -64,7 +64,7 @@
         "fetch:camoufox": "node scripts/fetch-browser.mjs",
         "doctor": "node scripts/doctor.mjs",
         "test": "npm run test:local",
-        "test:unit": "npm run build && node tests/unit_policy.mjs && node tests/unit_private_host_errors.mjs && node tests/unit_navigation.mjs && node tests/unit_sequence.mjs && node tests/unit_snapshot.mjs && node tests/unit_sqlite_shim.mjs && node tests/unit_browser_preflight.mjs && node tests/unit_browser_compatibility.mjs && node tests/unit_browser_fetch.mjs && node tests/unit_files.mjs && node tests/unit_sessions_ttl.mjs && node tests/unit_profiles.mjs && node tests/unit_secrets.mjs && node tests/unit_csv.mjs && node tests/unit_flows.mjs && node tests/unit_scheduler.mjs && node tests/unit_diagnose.mjs && node tests/unit_junit.mjs && node tests/unit_budgets.mjs && node tests/unit_devices.mjs && node tests/unit_scoring.mjs && node tests/unit_scrape_extract.mjs && node tests/unit_scrape_http.mjs && node tests/unit_scrape_lite.mjs && node tests/unit_captcha.mjs && node tests/unit_notify.mjs && node tests/unit_live_links.mjs && node tests/unit_live_http.mjs",
+        "test:unit": "npm run build && node tests/unit_policy.mjs && node tests/unit_private_host_errors.mjs && node tests/unit_navigation.mjs && node tests/unit_sequence.mjs && node tests/unit_snapshot.mjs && node tests/unit_sqlite_shim.mjs && node tests/unit_browser_preflight.mjs && node tests/unit_browser_compatibility.mjs && node tests/unit_browser_fetch.mjs && node tests/unit_files.mjs && node tests/unit_sessions_ttl.mjs && node tests/unit_profiles.mjs && node tests/unit_secrets.mjs && node tests/unit_csv.mjs && node tests/unit_flows.mjs && node tests/unit_scheduler.mjs && node tests/unit_diagnose.mjs && node tests/unit_junit.mjs && node tests/unit_budgets.mjs && node tests/unit_devices.mjs && node tests/unit_scoring.mjs && node tests/unit_scrape_extract.mjs && node tests/unit_scrape_http.mjs && node tests/unit_scrape_lite.mjs && node tests/unit_captcha.mjs && node tests/unit_notify.mjs && node tests/unit_live_links.mjs && node tests/unit_live_http.mjs && node tests/unit_output_schema.mjs",
         "test:local": "npm run build && PYTHONDONTWRITEBYTECODE=1 python3 tests/test_client.py --mode local",
         "test:camoufox": "npm run fetch:camoufox && npm run test:local",
         "test:docker": "./tests/run_tests.sh",

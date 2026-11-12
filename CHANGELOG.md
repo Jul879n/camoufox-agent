@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-11-12
+
+### Fixed
+- Output schema of snapshot elements now declares `href` and `frame`: elements inside an iframe (e.g. the reCAPTCHA checkbox) made strict MCP clients reject every `browse_session_action`/snapshot result with `Additional properties are not allowed ('frame' was unexpected)`.
+
 ## [0.6.0] - 2026-11-12
 
 ### Added
