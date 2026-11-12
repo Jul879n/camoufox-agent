@@ -8,3 +8,6 @@ assert.equal(flowSchema.safeParse({ ...ok, startUrl: "file:///etc/passwd" }).suc
 assert.equal(flowSchema.safeParse({ ...ok, actions: [{ type: "explode" }] }).success, false);
 assert.equal(flowSchema.safeParse({ ...ok, profile: "Bad Name" }).success, false);
 console.log("unit_flows ok");
+const withHuman = { ...ok, actions: [...ok.actions, { type: "waitForHuman", reason: "Resolver captcha" }] };
+assert.ok(flowSchema.safeParse(withHuman).success, "waitForHuman action must stay valid in flows");
+console.log("unit_flows human ok");

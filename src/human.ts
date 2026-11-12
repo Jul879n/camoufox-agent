@@ -4,6 +4,7 @@ import type { SequenceActionResult } from "./types.js";
 import type { Page } from "playwright-core";
 import { resolveLocator } from "./sequence.js";
 import { isHttpActive } from "./http-state.js";
+import { notifyHuman } from "./notify.js";
 
 export interface PendingHuman {
   id: string;
@@ -32,11 +33,12 @@ export function resolvePending(id: string, value: { code?: string } = {}): boole
   return true;
 }
 
-function requestHuman(sessionId: string, kind: "human" | "code", reason: string, label: string | undefined, timeoutMs: number) {
+function requestHuman(sessionId: string, kind: "human" | "code", reason: string, label: string | undefined, timeoutMs: number, context: { url?: string; flow?: string }) {
   const id = randomUUID();
   let timer: ReturnType<typeof setTimeout> | undefined;
   const promise = new Promise<{ code?: string }>((resolve, reject) => {
     pending.set(id, { id, sessionId, kind, reason, label, createdAt: new Date().toISOString(), resolve });
+    notifyHuman({ event: "human_pending", sessionId, reason, kind, url: context.url, flow: context.flow });
     timer = setTimeout(() => {
       pending.delete(id);
       reject(new Error("Timed out waiting for human"));
@@ -53,6 +55,7 @@ export function isHumanAction(action: SequenceAction): action is Extract<Sequenc
 export async function runHumanAction(
   session: { id: string; page: Page; secrets: string[] },
   action: Extract<SequenceAction, { type: "waitForHuman" | "promptCode" }>,
+  context: { flow?: string } = {},
 ): Promise<SequenceActionResult> {
   const started = Date.now();
   const reason = action.type === "waitForHuman" ? action.reason : `Verification code needed: ${action.label}`;
@@ -64,7 +67,7 @@ export async function runHumanAction(
   }
 
   const timeout = action.timeout ?? 600000;
-  const request = requestHuman(session.id, action.type === "promptCode" ? "code" : "human", reason, label, timeout);
+  const request = requestHuman(session.id, action.type === "promptCode" ? "code" : "human", reason, label, timeout, { url: session.page.url(), flow: context.flow });
   try {
     if (action.type === "waitForHuman") {
       const until = action.until

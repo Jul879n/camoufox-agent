@@ -24,6 +24,14 @@ const CAPTCHA_LLM_PLAYBOOKS: Record<CaptchaProvider, string> = {
   generic: "Generic challenge pattern: inspect visible text, interactiveElements, captchaIframes, challengeSignals, and the bounded screenshot to infer the requested task. Prefer incremental actions followed by a fresh session read because challenges often change after each interaction.",
 };
 
+// `input:challenge` (any input named "token"), `markup:challenge-provider` (any "cloudflare" in the HTML)
+// and `status:*` alone are common false positives; only these signals mean a real human check.
+const STRONG_CHALLENGE_SIGNALS = ["iframe:captcha", "visibleText:human-verification", "title:challenge"];
+
+export function isStrongChallenge(detection: { captchaDetected?: boolean; challengeSignals?: string[] }): boolean {
+  return Boolean(detection.captchaDetected) && (detection.challengeSignals ?? []).some((signal) => STRONG_CHALLENGE_SIGNALS.includes(signal));
+}
+
 export function classifyCaptchaProvider(src: string): { provider: CaptchaProvider; selector: string } | undefined {
   if (/recaptcha/.test(src)) return { provider: "recaptcha", selector: "iframe[src*='recaptcha']" };
   if (/hcaptcha/.test(src)) return { provider: "hcaptcha", selector: "iframe[src*='hcaptcha']" };
