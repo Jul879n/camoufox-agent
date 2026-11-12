@@ -38,7 +38,8 @@ await runChild({
 assert.equal(received.length, 1, "one webhook expected");
 const { headers, body } = received[0];
 const payload = JSON.parse(body);
-assert.equal(payload.liveUrl, "https://x.test/live");
+assert.match(payload.liveUrl, /^https:\/\/x\.test\/live\?ott=[A-Za-z0-9_-]{32}$/);
+assert.ok(payload.message.includes(payload.liveUrl) && !payload.message.includes("s3cret"));
 assert.ok(payload.message.includes("«demo»") && payload.message.includes("s1"));
 assert.ok(!body.includes("abc"), "url must be redacted");
 const ts = headers["x-webhook-timestamp"];
@@ -47,6 +48,16 @@ assert.equal(headers["x-webhook-signature-v2"], createHmac("sha256", "s3cret").u
 
 await runChild(base);
 assert.equal(received.length, 1, "no request without CAMOUFOX_AGENT_NOTIFY_URL");
+
+// two targets -> two webhooks, each with its own one-time link
+await runChild({
+  ...base,
+  CAMOUFOX_AGENT_NOTIFY_URL: `http://127.0.0.1:${port}/a, http://127.0.0.1:${port}/b`,
+  CAMOUFOX_AGENT_PUBLIC_URL: "https://x.test",
+});
+assert.equal(received.length, 3, "two more webhooks expected");
+const [l1, l2] = received.slice(1).map((r) => JSON.parse(r.body).liveUrl);
+assert.ok(l1 && l2 && l1 !== l2, "each target must get a distinct link");
 
 server.close();
 console.log("unit_notify ok");

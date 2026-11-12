@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-11-12
+
+### Added
+- One-time links to `/live`: the `live_link` tool (MCP/REST, master token) returns `<CAMOUFOX_AGENT_PUBLIC_URL>/live?ott=<code>` valid 15 minutes. `GET /live?ott=` only shows an intermediate page (link previews cannot burn it); the button's `POST /api/live-links/redeem` consumes the code once and returns a 30-minute session token that opens only `/live`, `/api/sessions*` and `/api/human*`.
+- `CAMOUFOX_AGENT_NOTIFY_URL` accepts a comma-separated list; each target gets its own one-time link.
+
+### Changed
+- Human-pending notifications carry a one-time link instead of a bare `/live` URL; the master token never leaves the server.
+
 ## [0.5.0] - 2026-11-12
 
 ### Added

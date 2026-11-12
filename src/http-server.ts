@@ -7,6 +7,8 @@ import { TOOL_REGISTRY, createMcpServer, invokeTool } from "./register-tools.js"
 import { sanitizeErrorMessage, describeError } from "./utils.js";
 import { addShutdownHook } from "./index.js";
 import { handleLiveRoute } from "./live-routes.js";
+import { REDEEM_HTML } from "./live-page.js";
+import { isLivePath, isLiveSessionToken, redeemLiveCode } from "./live-links.js";
 import { setHttpActive } from "./http-state.js";
 import { enableWarmPool } from "./scrape/warm-pool.js";
 import { startScheduler, stopScheduler } from "./scheduler.js";
@@ -29,7 +31,9 @@ function authorized(req: http.IncomingMessage, url: URL, token: string | undefin
   const header = req.headers.authorization ?? "";
   const bearer = header.startsWith("Bearer ") ? header.slice(7) : "";
   const candidate = bearer || (url.pathname === "/live" ? (url.searchParams.get("token") ?? "") : "");
-  return timingSafeEqual(digest(candidate), digest(token));
+  if (timingSafeEqual(digest(candidate), digest(token))) return true;
+  // A live session token (from a redeemed one-time link) only opens the live routes.
+  return isLivePath(url.pathname) && isLiveSessionToken(candidate);
 }
 
 export function sendJson(res: http.ServerResponse, status: number, body: unknown): void {
@@ -106,6 +110,19 @@ export async function startHttpServer(options: HttpServerOptions = {}): Promise<
         applyCors(req, res, origins);
         if (req.method === "OPTIONS") { res.writeHead(204); res.end(); return; }
         if (url.pathname === "/health") return sendJson(res, 200, { ok: true, version: SERVER_VERSION });
+        // One-time link: GET only shows a page (link previews must not burn the code); the code is
+        // redeemed by the button's POST, which a crawler never sends.
+        if (req.method === "GET" && url.pathname === "/live" && url.searchParams.has("ott")) {
+          res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "referrer-policy": "no-referrer", "x-robots-tag": "noindex" });
+          res.end(REDEEM_HTML);
+          return;
+        }
+        if (req.method === "POST" && url.pathname === "/api/live-links/redeem") {
+          const body = await readBody(req) as { code?: unknown } | undefined;
+          const liveToken = typeof body?.code === "string" ? redeemLiveCode(body.code) : undefined;
+          if (!liveToken) return sendJson(res, 404, { error: "invalid_or_used" });
+          return sendJson(res, 200, { token: liveToken });
+        }
         if (!authorized(req, url, token)) return sendJson(res, 401, { error: "unauthorized" });
 
         if (url.pathname === "/mcp") return await handleMcp(req, res);
