@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-11-12
+
+### Fixed
+- Output schema of snapshot elements now declares `href` and `frame`: elements inside an iframe (e.g. the reCAPTCHA checkbox) made strict MCP clients reject every `browse_session_action`/snapshot result with `Additional properties are not allowed ('frame' was unexpected)`.
+
+## [0.6.0] - 2026-11-12
+
+### Added
+- One-time links to `/live`: the `live_link` tool (MCP/REST, master token) returns `<CAMOUFOX_AGENT_PUBLIC_URL>/live?ott=<code>` valid 15 minutes. `GET /live?ott=` only shows an intermediate page (link previews cannot burn it); the button's `POST /api/live-links/redeem` consumes the code once and returns a 30-minute session token that opens only `/live`, `/api/sessions*` and `/api/human*`.
+- `CAMOUFOX_AGENT_NOTIFY_URL` accepts a comma-separated list; each target gets its own one-time link.
+
+### Changed
+- Human-pending notifications carry a one-time link instead of a bare `/live` URL; the master token never leaves the server.
+
+## [0.5.0] - 2026-11-12
+
+### Added
+- `isStrongChallenge` (`src/captcha.ts`): only `iframe:captcha`, `visibleText:human-verification` and `title:challenge` count as a real human check; `input:challenge`, `markup:challenge-provider` and `status:*` alone no longer stop a flow.
+- Webhook on a pending human step: set `CAMOUFOX_AGENT_NOTIFY_URL` (optional `CAMOUFOX_AGENT_NOTIFY_SECRET` signs it with `X-Webhook-Signature-V2`, and `CAMOUFOX_AGENT_PUBLIC_URL` adds the `/live` link, never the token).
+
+### Changed
+- Flows stop or wait on a strong captcha according to the trigger: `cron` waits up to 10 minutes for a human (`captcha_timeout` on expiry); `tool`, `http` and `cli` return `needs_human` immediately and keep the session open. `waitForHuman`/`promptCode` steps in non-cron runs return `needs_human` instead of blocking.
+
 ## [0.4.0] - 2026-11-09
 
 ### Added

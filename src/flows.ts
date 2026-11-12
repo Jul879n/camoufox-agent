@@ -8,6 +8,8 @@ import { handleExtract } from "./extract-tool.js";
 import type { ExtractToolInput } from "./schema/tools.js";
 import type { SessionActionToolInput, SessionNavigateToolInput, SessionStartToolInput } from "./schemas.js";
 import { describeError, redactDeep, redactUrl } from "./utils.js";
+import { isStrongChallenge } from "./captcha.js";
+import { isHumanAction } from "./human.js";
 
 export type FlowTrigger = "cli" | "tool" | "cron" | "http";
 
@@ -167,15 +169,41 @@ async function execFlow(name: string, getFlow: () => FlowDefinition, options: { 
     sessionId = start.structuredContent?.sessionId as string;
     run.sessionId = sessionId;
 
+    const activeSessionId = sessionId;
+    // Cron runs have no caller to ask: wait for a human (notified by webhook). Tool/http/cli runs return
+    // needs_human at once so the caller (e.g. Hermes) can tell its own channel; blocking would exceed its MCP timeout.
+    const waitsForHuman = options.trigger === "cron";
+    const handleChallenge = async (result: ToolResult, index: number, type: string): Promise<void> => {
+      if (!isStrongChallenge(result.structuredContent ?? {})) return;
+      if (waitsForHuman) {
+        const wait = await handleSessionAction({ sessionId: activeSessionId, action: { type: "waitForHuman", reason: "Resolver captcha", timeout: 600000 }, flowName: name } as unknown as SessionActionToolInput) as ToolResult;
+        if (wait.isError) {
+          run.steps.push({ index, type, ok: false, status: "error", error: "captcha_timeout" });
+          throw new Error("captcha_timeout");
+        }
+        return;
+      }
+      run.steps.push({ index, type, ok: false, status: "error", error: "needs_human" });
+      keepOpen = true;
+      throw new Error("needs_human");
+    };
+
     const nav = await handleSessionNavigate({ sessionId, url: flow.startUrl } as SessionNavigateToolInput) as ToolResult;
     if (nav.isError) throw new Error(errorText(nav));
+    await handleChallenge(nav, -1, "navigate");
 
     for (const [index, action] of flow.actions.entries()) {
-      const result = await handleSessionAction({ sessionId, action } as SessionActionToolInput) as ToolResult;
+      if (!waitsForHuman && isHumanAction(action)) {
+        run.steps.push({ index, type: action.type, ok: false, status: "error", error: "needs_human" });
+        keepOpen = true;
+        throw new Error("needs_human");
+      }
+      const result = await handleSessionAction({ sessionId, action, flowName: name } as unknown as SessionActionToolInput) as ToolResult;
       if (result.isError) {
         run.steps.push({ index, type: action.type, ok: false, status: "error", error: errorText(result) });
         throw new Error(`Step ${index} (${action.type}) failed: ${errorText(result)}`);
       }
+      await handleChallenge(result, index, action.type);
       const outcome = result.structuredContent?.action as { status?: string; message?: string; expected?: string; actual?: string } | undefined;
       const paused = outcome?.status === "paused";
       if (outcome?.status === "failed") {

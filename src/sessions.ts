@@ -430,7 +430,7 @@ export async function handleSessionAction(input: SessionActionToolInput) {
         currentSession.dialogPolicy = { accept: input.action.accept, promptText: input.action.promptText };
         actionResult = { index: 0, type: "dialog", status: "ok" as const, durationMs: Date.now() - dialogStarted };
       } else if (isHumanAction(input.action)) {
-        actionResult = await runHumanAction(currentSession, input.action);
+        actionResult = await runHumanAction(currentSession, input.action, { flow: (input as { flowName?: string }).flowName });
       } else {
         actionResult = await runSequenceAction(currentSession.page, input.action, 0, currentSession.rawUrls, currentSession.secrets, currentSession.rich);
       }

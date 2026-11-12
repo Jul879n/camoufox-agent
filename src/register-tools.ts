@@ -21,6 +21,7 @@ import { handleAudit } from "./audit-tool.js";
 import { handleStorage, handleNetworkRequest, handleSessionNetwork, handleDiagnose, handleInspect, handleSessionTrace } from "./diagnose-tool.js";
 import { handleProfileDelete, handleProfilesList } from "./profile-tools.js";
 import { handleBrowse, handleConsole, handleFind, handleForms, handleLinks, handleNetworkSummary, handleOutline, handleScreenshot, handleSequence, handleSnapshot, handleStatus } from "./tool-handlers.js";
+import { handleLiveLink } from "./live-links.js";
 import { scrapeToolShape, type ScrapeToolInput } from "./schema/tools.js";
 import { handleScrapeTool } from "./scrape/tool.js";
 import { handleSessionAction, handleSessionClose, handleSessionNavigate, handleSessionResume, handleSessionSnapshot, handleSessionStart } from "./sessions.js";
@@ -86,6 +87,7 @@ function registerAll(): void {
   registerJsonTool("browse_session_action", "Run one bounded action in an existing browser session.", sessionActionToolShape, nonReadOnlyOpenWorld, async (input) => handleSessionAction(input as SessionActionToolInput), sessionActionOutputSchema);
   registerJsonTool("browse_session_snapshot", "Read the current state of an existing browser session.", sessionSnapshotToolShape, readOnlyOpenWorld, async (input) => handleSessionSnapshot(input as SessionSnapshotToolInput), sessionSnapshotOutputSchema);
   registerJsonTool("browse_session_resume", "Resume a paused session after human action and return current state.", sessionResumeToolShape, nonReadOnlyOpenWorld, async (input) => handleSessionResume(input as SessionResumeToolInput), sessionResumeOutputSchema);
+  registerJsonTool("live_link", "Create a one-time link (15 min) to the live view so a human can solve a captcha or take over a session. Send the returned url to the user; never share any other token.", {}, { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false }, async () => handleLiveLink());
   registerJsonTool("browse_session_close", "Close an existing browser session.", sessionCloseToolShape, nonReadOnlyOpenWorld, async (input) => handleSessionClose(input as SessionCloseToolInput), sessionCloseOutputSchema);
 
   registerJsonTool("browse_scrape", "Fast tiered scrape (HTTP -> Chrome -> Camoufox) returning compact JSON: markdown, images, links, tables, metadata.", scrapeToolShape, readOnlyOpenWorld, async (input) => handleScrapeTool(input as ScrapeToolInput));

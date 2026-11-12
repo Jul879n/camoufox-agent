@@ -16,9 +16,11 @@ export const screenshotMetadataOutputSchema = z.object({
 }).optional();
 
 // Snapshot interactive element, reused by snapshot/sequence/session payloads.
-const snapshotElementOutputSchema = z.object({
+export const snapshotElementOutputSchema = z.object({
   tag: z.string(),
   selector: z.string(),
+  href: z.string().optional(),
+  frame: z.string().optional(),
   role: z.string().optional(),
   name: z.string().optional(),
   text: z.string().optional(),

@@ -55,7 +55,7 @@ camoufox-agent fetch
 - **Archivos**: acciones `upload` y `download` (por `selector` o por `url`, esta última recomendada para archivos grandes; `timeout` hasta 1 h) dentro de `CAMOUFOX_MCP_FILES_DIR` (por defecto `<HOME>/files`).
 - **Extracción estructurada**: `browse_extract` (paginación, `saveAs` JSON/CSV en `exports/`).
 - **Flujos**: `flow_save`, `flow_list`, `flow_run`; login por script, extracción y `schedule` (cron de 5 campos).
-- **Humano en el loop**: acciones `waitForHuman` y `promptCode`; con `serve`, el usuario interviene desde `/live`.
+- **Humano en el loop**: acciones `waitForHuman` y `promptCode`; con `serve`, el usuario interviene desde `/live`. Para recibir un aviso cuando una sesión espera a una persona: `CAMOUFOX_AGENT_NOTIFY_URL` (webhook), `CAMOUFOX_AGENT_NOTIFY_SECRET` (firma HMAC `X-Webhook-Signature-V2`) y `CAMOUFOX_AGENT_PUBLIC_URL` (base del enlace `/live`, sin token). `CAMOUFOX_AGENT_NOTIFY_URL` admite varias URLs separadas por coma y cada una recibe su propio enlace `/live?ott=…` de un solo uso (15 min; también la herramienta `live_link`). Los flows con `schedule` esperan hasta 10 min; los lanzados por tool/HTTP/CLI devuelven `needs_human` al instante.
 - Acción `goto` dentro de secuencias y sesiones.
 - **Diagnóstico para desarrollo**:
   - `browse_diagnose` (`url` o `sessionId`): consola y errores no capturados con stack, red (tiempos, tamaños, fallos, caché, compresión), Web Vitals y navigation timing, estadísticas del DOM y una auditoría (SEO, accesibilidad, cabeceras de seguridad, cookies, contenido mixto). `saveAs` guarda el informe en `exports/`.

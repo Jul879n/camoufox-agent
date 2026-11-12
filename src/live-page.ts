@@ -1,3 +1,20 @@
+// Página intermedia de un enlace de un solo uso: el código se canjea solo al pulsar el botón.
+export const REDEEM_HTML = `<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex"><title>Camoufox Agent</title>
+<style>body{font:16px system-ui,sans-serif;background:#111;color:#eee;display:flex;min-height:100vh;align-items:center;justify-content:center;margin:0}
+main{text-align:center;padding:24px}button{font:inherit;padding:10px 20px}#msg{margin-top:12px;color:#e99}</style></head><body>
+<main><p>Enlace de un solo uso a la vista en vivo.</p><button id="go">Abrir vista en vivo</button><p id="msg"></p></main>
+<script>
+document.getElementById("go").onclick = function(){
+  var code = new URLSearchParams(location.search).get("ott") || "", msg = document.getElementById("msg");
+  fetch("/api/live-links/redeem", {method: "POST", headers: {"content-type": "application/json"}, body: JSON.stringify({code: code})})
+    .then(function(r){ return r.ok ? r.json() : Promise.reject(); })
+    .then(function(d){ location.replace("/live?token=" + encodeURIComponent(d.token)); })
+    .catch(function(){ msg.textContent = "Enlace usado o vencido. Pida uno nuevo."; });
+};
+</script></body></html>`;
+
 // Página única (sin build ni dependencias) para ver y controlar sesiones en vivo.
 export const LIVE_HTML = `<!doctype html>
 <html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
